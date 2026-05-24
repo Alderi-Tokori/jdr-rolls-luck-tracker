@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-turso = "^0.6"
+turso = "0.6.1"
 tokio = { version = "^1.52", features = ["full"] }
+iced = "0.14.0"
+anyhow = "1.0"
