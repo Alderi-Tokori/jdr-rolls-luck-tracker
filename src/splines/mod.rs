@@ -178,14 +178,6 @@ fn get_graph_spline_equation_matrix(intervals: &Vec<GraphSplineInterval>) -> Vec
             );
             equation_matrix[equation_idx][nb_unknowns] = intervals[0].end.y;
             equation_idx += 1;
-            
-            // if !has_done_initial_boundary_condtition {
-            //     // Clamped spline
-            //     equation_matrix[equation_idx][coefficient_idx + 1] = 1.0;
-            //     equation_idx += 1;
-            // 
-            //     has_done_initial_boundary_condtition = true;
-            // }
 
             // Additional constraint for local optimum: first derivative must be zero
             if intervals[0].polynomial.coefficients.len() == 5 {
@@ -288,16 +280,6 @@ fn get_graph_spline_equation_matrix(intervals: &Vec<GraphSplineInterval>) -> Vec
         &2,
         &1.0
     );
-
-    // // Clamped spline
-    // get_equation_factors(
-    //     &mut equation_matrix[equation_idx],
-    //     &coefficient_idx,
-    //     &last_interval.polynomial.coefficients.len(),
-    //     &max_x_value,
-    //     &1,
-    //     &1.0
-    // );
 
     equation_matrix
 }
