@@ -6,17 +6,17 @@ use crate::splines;
 use crate::splines::PolynomialFunction;
 
 #[derive(Debug, Clone)]
-pub struct SplineGraph {
-    pub data: Vec<Point>,
+pub struct SplineGraph<'a> {
+    pub data: Option<&'a Vec<Point>>,
     pub line_color: Color,
     pub line_width: f32,
     pub number_of_segments: i32,
 }
 
-impl Default for SplineGraph {
+impl<'a> Default for SplineGraph<'a> {
     fn default() -> Self {
         Self {
-            data: vec![],
+            data: None,
             line_color: Color::from_rgb(0.2, 0.5, 0.9),
             line_width: 2.0,
             number_of_segments: 1,
@@ -24,7 +24,7 @@ impl Default for SplineGraph {
     }
 }
 
-impl<Message> canvas::Program<Message> for SplineGraph {
+impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
     type State = ();
 
     fn draw(
@@ -36,7 +36,11 @@ impl<Message> canvas::Program<Message> for SplineGraph {
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        if self.data.len() < 2 {
+
+        let empty_data = vec![];
+        let data_iced = self.data.unwrap_or(& empty_data);
+
+        if data_iced.len() < 2 {
             return vec![frame.into_geometry()];
         }
 
@@ -44,16 +48,16 @@ impl<Message> canvas::Program<Message> for SplineGraph {
             return vec![frame.into_geometry()];
         }
 
-        let data: Vec<splines::Point> = self.data.iter().map(|p| p.into()).collect();
+        let data: Vec<splines::Point> = data_iced.iter().map(|p| p.into()).collect();
         let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function(data) {
             Some(p) => p,
             None => return vec![frame.into_geometry()]
         };
 
-        let min_x = self.data.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
-        let max_x = self.data.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
-        let min_y = self.data.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
-        let max_y = self.data.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
+        let min_x = data_iced.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let max_x = data_iced.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
+        let min_y = data_iced.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
+        let max_y = data_iced.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
 
         let x_range = max_x - min_x;
         let y_range = max_y - min_y;
@@ -71,7 +75,7 @@ impl<Message> canvas::Program<Message> for SplineGraph {
         // Line
         let line_path = {
             let mut builder = canvas::path::Builder::new();
-            let first = self.data[0];
+            let first = data_iced[0];
             builder.move_to(Point::new(
                 map_x(graph_w, min_x, x_range, first.x),
                 map_y(graph_h, min_y, y_range, first.y),

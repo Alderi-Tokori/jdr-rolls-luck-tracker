@@ -8,7 +8,7 @@ mod splines;
 async fn main() -> anyhow::Result<()> {
     let database = db::DBHandle::init().await?;
 
-    iced::run(gui::Counter::update, gui::Counter::view)?;
+    iced::run(gui::update, gui::view)?;
 
     Ok(())
 }

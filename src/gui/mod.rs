@@ -1,35 +1,26 @@
+use iced::{Element, Point, Task};
+
 mod widgets;
+mod dashboard;
 
-use iced::{Length, Point};
-use iced::widget::{button, column, text, Column, Canvas, canvas};
+pub struct State {
+    screen: Screen,
+}
 
-#[derive(Default)]
-pub struct Counter {
-    value: i64,
+enum Screen {
+    Dashboard(dashboard::Dashboard),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Message {
-    Increment,
-    Decrement,
+    Dashboard(dashboard::Message),
 }
 
-impl Counter {
-    pub fn update(&mut self, message: Message) {
-        match message {
-            Message::Increment => {
-                self.value += 1;
-            }
-            Message::Decrement => {
-                self.value -= 1;
-            }
-        }
-    }
-
-    pub fn view(&self) -> Column<'_, Message> {
-        column![
-             canvas(widgets::graph::SplineGraph {
-                data: vec![
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            screen: Screen::Dashboard(dashboard::Dashboard {
+                graph_points: vec![
                     Point::new(0.0, 2.0),
                     Point::new(1.0, 3.0),
                     Point::new(2.0, 4.0),
@@ -37,12 +28,31 @@ impl Counter {
                     Point::new(4.0, 3.0),
                     Point::new(5.0, 5.0),
                     Point::new(6.0, 2.0),
-                ],
-                number_of_segments: 50,
-                ..widgets::graph::SplineGraph::default()
-            })
-            .width(Length::Fill)
-            .height(Length::Fill)
-        ]
+                ]
+            }),
+        }
+    }
+}
+
+pub fn update(state: &mut State, message: Message) -> Task<Message> {
+    match message {
+        Message::Dashboard(message) => {
+            if let Screen::Dashboard(dashboard) = &mut state.screen {
+                let action = dashboard.update(message);
+
+                match action {
+                    dashboard::Action::None => Task::none(),
+                    dashboard::Action::Run(task) => task.map(Message::Dashboard),
+                }
+            } else {
+                Task::none()
+            }
+        }
+    }
+}
+
+pub fn view<'a>(state: &'a State) -> Element<'a, Message> {
+    match &state.screen {
+        Screen::Dashboard(dashboard) => dashboard.view().map(Message::Dashboard).into(),
     }
 }
