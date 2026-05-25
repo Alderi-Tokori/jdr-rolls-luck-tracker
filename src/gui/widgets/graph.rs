@@ -1,5 +1,6 @@
-use iced::mouse;
-use iced::widget::canvas;
+use std::f32::consts::PI;
+use iced::{alignment, mouse, Pixels};
+use iced::widget::{canvas, text};
 use iced::widget::canvas::{Cache, Frame, Path, Stroke, Fill};
 use iced::{Color, Point, Rectangle, Renderer, Size, Theme, Vector};
 use crate::splines;
@@ -100,6 +101,27 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
             .with_color(self.line_color)
             .with_width(self.line_width);
         frame.stroke(&line_path, line_stroke);
+
+        frame.with_save(|frame| {
+            frame.fill_text(canvas::Text {
+                content: "Hello".to_string(),
+                position: Point::new(100.0, 100.0),
+                color: Color::from_rgb(1.0, 0.0, 0.0),
+                size: Pixels(24.0),
+                ..canvas::Text::default()
+            });
+
+            frame.rotate(PI / 4.0); // radians, clockwise
+            frame.fill_text(canvas::Text {
+                content: "Centered".to_string(),
+                position: Point::new(100.0, 100.0), // this becomes the center point
+                color: Color::from_rgb(1.0, 0.0, 0.0),
+                size: Pixels(24.0),
+                align_x: text::Alignment::Center,
+                align_y: alignment::Vertical::Center,
+                ..canvas::Text::default()
+            });
+        });
 
         vec![frame.into_geometry()]
     }
