@@ -2,6 +2,7 @@
 
 mod db;
 mod gui;
+mod splines;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
