@@ -28,18 +28,18 @@ impl Counter {
 
     pub fn view(&self) -> Column<'_, Message> {
         column![
-            button("+").on_press(Message::Increment),
-            text(self.value),
-            button("-").on_press(Message::Decrement),
-             canvas(widgets::graph::LineGraph {
+             canvas(widgets::graph::SplineGraph {
                 data: vec![
-                    Point::new(0.0, 0.0),
-                    Point::new(1.0, 2.0),
-                    Point::new(2.0, 1.5),
-                    Point::new(3.0, 3.0),
-                    Point::new(4.0, 4.5),
+                    Point::new(0.0, 2.0),
+                    Point::new(1.0, 3.0),
+                    Point::new(2.0, 4.0),
+                    Point::new(3.0, 1.0),
+                    Point::new(4.0, 3.0),
+                    Point::new(5.0, 5.0),
+                    Point::new(6.0, 2.0),
                 ],
-                ..widgets::graph::LineGraph::default()
+                number_of_segments: 50,
+                ..widgets::graph::SplineGraph::default()
             })
             .width(Length::Fill)
             .height(Length::Fill)

@@ -4,11 +4,20 @@ use std::cmp::min;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Point {
-    x: f64,
-    y: f64,
+    pub x: f64,
+    pub y: f64,
 }
 
-trait PolynomialFunction {
+impl From<&iced::Point> for Point {
+    fn from(item: &iced::Point) -> Self {
+        Point {
+            x: item.x as f64,
+            y: item.y as f64
+        }
+    }
+}
+
+pub trait PolynomialFunction {
     fn eval(&self, x: f64) -> Option<f64>;
 }
 
@@ -36,9 +45,9 @@ impl PolynomialFunction for Polynomial {
 }
 
 #[derive(Debug)]
-struct GraphSplineInterval {
-    start: Point,
-    end: Point,
+pub struct GraphSplineInterval {
+    pub start: Point,
+    pub end: Point,
     polynomial: Polynomial,
 }
 
@@ -49,8 +58,8 @@ impl PolynomialFunction for GraphSplineInterval {
 }
 
 #[derive(Debug)]
-struct GraphSpline {
-    intervals: Vec<GraphSplineInterval>
+pub struct GraphSpline {
+    pub intervals: Vec<GraphSplineInterval>
 }
 
 impl PolynomialFunction for GraphSpline {
@@ -460,18 +469,20 @@ fn apply_matrix_solution_to_intervals(equation_matrix: & Vec<Vec<f64>>, interval
     let mut cur_offset = 0;
     let solution_idx = equation_matrix[0].len() - 1;
 
-    for curInterval in intervals {
-        let nb_coeffs = curInterval.polynomial.coefficients.len();
+    for cur_interval in intervals {
+        let nb_coeffs = cur_interval.polynomial.coefficients.len();
 
         for i in 0..nb_coeffs {
-            curInterval.polynomial.coefficients[i] = equation_matrix[cur_offset + i][solution_idx]
+            cur_interval.polynomial.coefficients[i] = equation_matrix[cur_offset + i][solution_idx]
         }
 
         cur_offset += nb_coeffs
     }
 }
 
-pub fn get_graph_spline_interpolation_function(points: Vec<Point>) -> Option<GraphSpline> {
+pub fn get_graph_spline_interpolation_function(points: impl Into<Vec<Point>>) -> Option<GraphSpline> {
+    let points: Vec<Point> = points.into();
+
     if points.len() < 2 {
         return None;
     }
