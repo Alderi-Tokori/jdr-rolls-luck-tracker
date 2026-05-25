@@ -103,18 +103,11 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
         frame.stroke(&line_path, line_stroke);
 
         frame.with_save(|frame| {
-            frame.fill_text(canvas::Text {
-                content: "Hello".to_string(),
-                position: Point::new(100.0, 100.0),
-                color: Color::from_rgb(1.0, 0.0, 0.0),
-                size: Pixels(24.0),
-                ..canvas::Text::default()
-            });
-
-            frame.rotate(PI / 4.0); // radians, clockwise
+            frame.translate(Vector::new(100.0, 100.0)); // move origin to text position
+            frame.rotate(PI / 4.0); // rotate around new origin, radians, clockwise
             frame.fill_text(canvas::Text {
                 content: "Centered".to_string(),
-                position: Point::new(100.0, 100.0), // this becomes the center point
+                position: Point::new(0.0, 0.0), // this becomes the center point thanks to align_x and align_y
                 color: Color::from_rgb(1.0, 0.0, 0.0),
                 size: Pixels(24.0),
                 align_x: text::Alignment::Center,
