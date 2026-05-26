@@ -64,26 +64,22 @@ pub struct GraphSpline {
 
 impl PolynomialFunction for GraphSpline {
     fn eval(&self, x: f64) -> Option<f64> {
-        if self.intervals.len() == 0 {
-            return None
+        if self.intervals.is_empty() {
+            return None;
         }
 
-        let first_interval = self.intervals.first().unwrap();
-        let last_interval = self.intervals.last().unwrap();
+        let first = &self.intervals[0];
+        let last = self.intervals.last().unwrap();
 
-        if x < first_interval.end.x {
-            return first_interval.eval(x);
-        } else if x >= last_interval.start.x {
-            return last_interval.eval(x);
+        if x < first.end.x {
+            return first.eval(x);
+        }
+        if x >= last.start.x {
+            return last.eval(x);
         }
 
-        self.intervals[1..self.intervals.len() - 1]
-            .into_iter()
-            .find(|i| {
-                i.start.x <= x && i.end.x > x
-            })
-            .expect("We've tested the two edge cases already so we should always have an interval here, as all intervals should be next to each other")
-            .eval(x)
+        let idx = self.intervals.partition_point(|i| i.start.x <= x);
+        self.intervals[idx - 1].eval(x)
     }
 }
 
@@ -877,26 +873,23 @@ mod tests {
                 })
                 .collect();
 
-            let solution = get_graph_spline_interpolation_function_v4(&points);
+            let solution = get_graph_spline_interpolation_function_v4(&points).unwrap();
 
-            assert!(solution.is_some());
-
-            let solution = solution.unwrap();
+            let eval_xs: Vec<f64> = solution.intervals.iter()
+                .flat_map(|interval| {
+                    let step = (interval.end.x - interval.start.x) / 100.0;
+                    (1..=100).map(move |seg| interval.start.x + seg as f64 * step)
+                })
+                .collect();
 
             let start = std::time::Instant::now();
-            for interval in &solution.intervals {
-                let segment_step = (interval.end.x - interval.start.x) / 50.0;
-
-                for segment_idx in 1..=50 {
-                    let x = interval.start.x + (segment_idx as f64) * segment_step;
-
-                    solution.eval(x).unwrap_or(0.0);
-                }
+            for &x in &eval_xs {
+                solution.eval(x).unwrap();
             }
             let elapsed = start.elapsed();
 
             println!(
-                "size={:>6} | eval_v1: {:>10.1?}",
+                "size={:>6} | eval: {:>10.1?}",
                 size,
                 elapsed,
             );
