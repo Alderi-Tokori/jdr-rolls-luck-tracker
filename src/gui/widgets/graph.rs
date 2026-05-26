@@ -49,12 +49,12 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
             return vec![frame.into_geometry()];
         }
 
-        if (self.number_of_segments < 1) {
+        if self.number_of_segments < 1 {
             return vec![frame.into_geometry()];
         }
 
         let data: Vec<splines::Point> = data_iced.iter().map(|p| p.into()).collect();
-        let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function_v10(&data) {
+        let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function(&data) {
             Some(p) => p,
             None => return vec![frame.into_geometry()]
         };
