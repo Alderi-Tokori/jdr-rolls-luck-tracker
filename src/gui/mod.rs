@@ -22,7 +22,6 @@ impl Default for State {
             screen: Screen::Dashboard(dashboard::Dashboard {
                 graph_points: vec![
                     Point::new(0.0, 2.0),
-                    Point::new(1.0, 3.0),
                     Point::new(2.0, 4.0),
                     Point::new(3.0, 1.0),
                     Point::new(4.0, 3.0),
