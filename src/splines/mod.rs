@@ -320,6 +320,161 @@ fn build_compact_equation_system(intervals: &Vec<GraphSplineInterval>) -> Vec<Co
     rows
 }
 
+const MAX_ENTRIES_PER_ROW: usize = 10;
+
+struct StackRow {
+    entries: [(usize, f64); MAX_ENTRIES_PER_ROW],
+    len: usize,
+    rhs: f64,
+}
+
+impl StackRow {
+    fn new() -> Self {
+        StackRow {
+            entries: [(0, 0.0); MAX_ENTRIES_PER_ROW],
+            len: 0,
+            rhs: 0.0,
+        }
+    }
+
+    fn clear(&mut self, rhs: f64) {
+        self.len = 0;
+        self.rhs = rhs;
+    }
+
+    fn add_entry(&mut self, col: usize, value: f64) {
+        if let Some(last) = self.entries[..self.len].last_mut() {
+            if last.0 == col {
+                last.1 += value;
+                return;
+            }
+        }
+        self.entries[self.len] = (col, value);
+        self.len += 1;
+    }
+
+    fn as_slice(&self) -> &[(usize, f64)] {
+        &self.entries[..self.len]
+    }
+}
+
+fn add_equation_factors_to_stack_row(
+    row: &mut StackRow,
+    coefficient_idx: usize,
+    nb_coefficients: usize,
+    x_value: f64,
+    derivative: usize,
+    sign: f64,
+) {
+    let mut cur_x_value = 1.0;
+    for i in derivative..nb_coefficients {
+        let mut derivative_coeff = 1.0;
+        for j in 0..derivative {
+            derivative_coeff = derivative_coeff * ((i - j) as f64);
+        }
+
+        row.add_entry(coefficient_idx + i, derivative_coeff * cur_x_value * sign);
+        cur_x_value *= x_value;
+    }
+}
+
+fn for_each_equation_row(intervals: &[GraphSplineInterval], mut on_row: impl FnMut(&StackRow)) {
+    let mut row = StackRow::new();
+
+    let first_interval = &intervals[0];
+    row.clear(first_interval.start.y);
+    row.add_entry(0, 1.0);
+    on_row(&row);
+
+    let mut coefficient_idx = 0;
+    let mut has_done_initial_boundary_condtition = false;
+
+    for intervals_pair in intervals.windows(2) {
+        let max_x_value_left = intervals_pair[0].end.x - intervals_pair[0].start.x;
+        let coefficient_idx_right = coefficient_idx + intervals_pair[0].polynomial.coefficients.len();
+
+        row.clear(intervals_pair[0].end.y);
+        add_equation_factors_to_stack_row(
+            &mut row, coefficient_idx,
+            intervals_pair[0].polynomial.coefficients.len(),
+            max_x_value_left, 0, 1.0,
+        );
+        on_row(&row);
+
+        if intervals_pair[0].polynomial.coefficients.len() == 5 {
+            row.clear(0.0);
+            add_equation_factors_to_stack_row(
+                &mut row, coefficient_idx,
+                intervals_pair[0].polynomial.coefficients.len(),
+                max_x_value_left, 1, 1.0,
+            );
+            on_row(&row);
+        }
+
+        row.clear(0.0);
+        add_equation_factors_to_stack_row(
+            &mut row, coefficient_idx,
+            intervals_pair[0].polynomial.coefficients.len(),
+            max_x_value_left, 1, 1.0,
+        );
+        add_equation_factors_to_stack_row(
+            &mut row, coefficient_idx_right,
+            intervals_pair[1].polynomial.coefficients.len(),
+            0.0, 1, -1.0,
+        );
+        on_row(&row);
+
+        if !has_done_initial_boundary_condtition {
+            row.clear(0.0);
+            row.add_entry(coefficient_idx + 2, 2.0);
+            on_row(&row);
+            has_done_initial_boundary_condtition = true;
+        }
+
+        row.clear(0.0);
+        add_equation_factors_to_stack_row(
+            &mut row, coefficient_idx,
+            intervals_pair[0].polynomial.coefficients.len(),
+            max_x_value_left, 2, 1.0,
+        );
+        add_equation_factors_to_stack_row(
+            &mut row, coefficient_idx_right,
+            intervals_pair[1].polynomial.coefficients.len(),
+            0.0, 2, -1.0,
+        );
+        on_row(&row);
+
+        row.clear(intervals_pair[1].start.y);
+        add_equation_factors_to_stack_row(
+            &mut row, coefficient_idx_right,
+            intervals_pair[1].polynomial.coefficients.len(),
+            0.0, 0, 1.0,
+        );
+        on_row(&row);
+
+        coefficient_idx += intervals_pair[0].polynomial.coefficients.len();
+    }
+
+    let last_interval = intervals.last().unwrap();
+    let max_x_value = last_interval.end.x - last_interval.start.x;
+
+    row.clear(last_interval.end.y);
+    add_equation_factors_to_stack_row(
+        &mut row, coefficient_idx,
+        last_interval.polynomial.coefficients.len(),
+        max_x_value, 0, 1.0,
+    );
+    on_row(&row);
+
+    row.clear(0.0);
+    add_equation_factors_to_stack_row(
+        &mut row, coefficient_idx,
+        last_interval.polynomial.coefficients.len(),
+        max_x_value, 2, 1.0,
+    );
+    on_row(&row);
+}
+
 fn add_equation_factors_to_compact_row_v2(
     row: &mut CompactRowV2,
     coefficient_idx: usize,
@@ -712,6 +867,36 @@ fn build_compact_equation_system_v5(intervals: &Vec<GraphSplineInterval>) -> Com
     Compact1DBandMatrix { n, bw, band_width, band, rhs }
 }
 
+fn build_compact_equation_system_v6(intervals: &Vec<GraphSplineInterval>) -> Compact1DBandMatrix {
+    let mut n: usize = 0;
+    let mut bw: usize = 0;
+
+    for_each_equation_row(intervals, |row| {
+        let i = n;
+        for &(col, _) in row.as_slice() {
+            let d = if col >= i { col - i } else { i - col };
+            bw = bw.max(d);
+        }
+        n += 1;
+    });
+
+    let band_width = 2 * bw + 1;
+    let mut band = vec![0.0; n * band_width];
+    let mut rhs = vec![0.0; n];
+
+    let mut i: usize = 0;
+    for_each_equation_row(intervals, |row| {
+        for &(col, val) in row.as_slice() {
+            let diag = col as isize - i as isize + bw as isize;
+            band[i * band_width + diag as usize] = val;
+        }
+        rhs[i] = row.rhs;
+        i += 1;
+    });
+
+    Compact1DBandMatrix { n, bw, band_width, band, rhs }
+}
+
 fn solve_1d_banded(mat: &Compact1DBandMatrix) -> Vec<f64> {
     let n = mat.n;
     let bw = mat.bw;
@@ -1017,6 +1202,23 @@ pub fn get_graph_spline_interpolation_function_v5(points: &[Point]) -> Option<Gr
     Some(GraphSpline { intervals })
 }
 
+pub fn get_graph_spline_interpolation_function_v6(points: &[Point]) -> Option<GraphSpline> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let points = points.to_vec();
+
+    let mut intervals = get_graph_spline_intervals(&points);
+    let matrix = build_compact_equation_system_v6(&intervals);
+
+    let solution = solve_1d_banded_v5(&matrix);
+
+    apply_compact_solution_to_intervals(&solution, &mut intervals);
+
+    Some(GraphSpline { intervals })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1184,9 +1386,11 @@ mod tests {
         let solution_v3 = get_graph_spline_interpolation_function_v3(&points);
         let solution_v4 = get_graph_spline_interpolation_function_v4(&points);
         let solution_v5 = get_graph_spline_interpolation_function_v5(&points);
+        let solution_v6 = get_graph_spline_interpolation_function_v6(&points);
 
         assert_eq!(solution_v3, solution_v4);
         assert_eq!(solution_v3, solution_v5);
+        assert_eq!(solution_v3, solution_v6);
     }
 
     #[test]
@@ -1215,12 +1419,19 @@ mod tests {
             assert_eq!(solution_v3, solution_v4, "v3 and v4 differ for size {}", size);
             assert_eq!(solution_v3, solution_v5, "v3 and v5 differ for size {}", size);
 
+            let start = std::time::Instant::now();
+            let solution_v6 = get_graph_spline_interpolation_function_v6(&points);
+            let elapsed_v6 = start.elapsed();
+
+            assert_eq!(solution_v3, solution_v6, "v3 and v6 differ for size {}", size);
+
             println!(
-                "size={:>6} | v3: {:>10.1?} | v4: {:>10.1?} | v5: {:>10.1?}",
+                "size={:>6} | v3: {:>10.1?} | v4: {:>10.1?} | v5: {:>10.1?} | v6: {:>10.1?}",
                 size,
                 elapsed_v3,
                 elapsed_v4,
                 elapsed_v5,
+                elapsed_v6,
             );
         }
     }
