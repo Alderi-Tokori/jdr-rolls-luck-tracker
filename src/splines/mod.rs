@@ -373,7 +373,7 @@ fn add_equation_factors_to_stack_row(
     }
 }
 
-static FALLING_FACTORIAL: [[f64; 3]; 6] = [
+const FALLING_FACTORIAL: [[f64; 3]; 6] = [
     [1.0, 0.0, 0.0],
     [1.0, 1.0, 0.0],
     [1.0, 2.0, 2.0],
