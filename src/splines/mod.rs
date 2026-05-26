@@ -873,11 +873,174 @@ pub fn get_graph_spline_interpolation_function_v3(points: &[Point]) -> Option<Gr
 
 // We put everything into a one dimensional array to maximize cache hits
 struct Compact1DBandMatrix {
-    band: Vec<f64>
+    n: usize,
+    bw: usize,
+    band_width: usize,
+    band: Vec<f64>,
+    rhs: Vec<f64>,
 }
 
-fn build_compact_equation_system_v2(intervals: &Vec<GraphSplineInterval>) -> Compact1DBandMatrix {
+fn build_compact_equation_system_v4(intervals: &Vec<GraphSplineInterval>) -> Compact1DBandMatrix {
+    let rows = build_compact_equation_system(intervals);
+    let n = rows.len();
 
+    let mut bw: usize = 0;
+    for (i, row) in rows.iter().enumerate() {
+        for &(col, _) in &row.entries {
+            let d = if col >= i { col - i } else { i - col };
+            bw = bw.max(d);
+        }
+    }
+    let band_width = 2 * bw + 1;
+
+    let mut band = vec![0.0; n * band_width];
+    let mut rhs = vec![0.0; n];
+
+    for (i, row) in rows.iter().enumerate() {
+        for &(col, val) in &row.entries {
+            let diag = col as isize - i as isize + bw as isize;
+            band[i * band_width + diag as usize] = val;
+        }
+        rhs[i] = row.rhs;
+    }
+
+    Compact1DBandMatrix { n, bw, band_width, band, rhs }
+}
+
+fn solve_1d_banded(mat: &Compact1DBandMatrix) -> Vec<f64> {
+    let n = mat.n;
+    let bw = mat.bw;
+    let band_w = mat.band_width;
+    let mut band = mat.band.clone();
+    let mut rhs = mat.rhs.clone();
+
+    let mut solved: HashSet<usize> = HashSet::new();
+    let mut cur: usize = 0;
+
+    // First pass: top to bottom
+    for i in 0..n - 1 {
+        while solved.contains(&cur) {
+            cur += 1;
+        }
+
+        let base_i = i * band_w;
+        let fnz = {
+            let start_col = cur.max(i.saturating_sub(bw));
+            let end_col = (i + bw).min(n - 1);
+            (start_col..=end_col).find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[base_i + d as usize] != 0.0
+            })
+        };
+        let fnz = match fnz { Some(c) => c, None => continue };
+
+        let pivot = {
+            let d = (fnz as isize - i as isize + bw as isize) as usize;
+            band[base_i + d]
+        };
+
+        let mut has_found = false;
+        for j in (i + 1)..min(i + 7, n) {
+            let base_j = j * band_w;
+            let val_below = {
+                let d = (fnz as isize - j as isize + bw as isize) as usize;
+                if d < band_w { band[base_j + d] } else { 0.0 }
+            };
+            if val_below != 0.0 {
+                has_found = true;
+                let mult = val_below / pivot;
+
+                let c_start = fnz;
+                let c_end = min(fnz + 4, n).min(i + bw + 1);
+                for c in c_start..c_end {
+                    let di = (c as isize - i as isize + bw as isize) as usize;
+                    if di < band_w && band[base_i + di] != 0.0 {
+                        let dj = (c as isize - j as isize + bw as isize) as usize;
+                        if dj < band_w {
+                            band[base_j + dj] -= band[base_i + di] * mult;
+                        }
+                    }
+                }
+
+                if rhs[i] != 0.0 {
+                    rhs[j] -= rhs[i] * mult;
+                }
+            } else if has_found {
+                break;
+            }
+        }
+
+        solved.insert(fnz);
+    }
+
+    // Second pass: bottom to top
+    solved.clear();
+    cur = n - 1;
+
+    for i in (1..n).rev() {
+        while cur > 0 && solved.contains(&cur) {
+            cur -= 1;
+        }
+
+        let base_i = i * band_w;
+        let last = {
+            let end_col = (i + bw).min(n - 1).min(cur);
+            let start_col = i.saturating_sub(bw);
+            (start_col..=end_col).rev().find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[base_i + d as usize] != 0.0
+            })
+        };
+        let last = match last { Some(c) => c, None => continue };
+
+        let pivot_val = {
+            let d = (last as isize - i as isize + bw as isize) as usize;
+            band[base_i + d]
+        };
+        if pivot_val != 1.0 {
+            rhs[i] /= pivot_val;
+            let d = (last as isize - i as isize + bw as isize) as usize;
+            band[base_i + d] = 1.0;
+        }
+
+        let cur_rhs = rhs[i];
+
+        for j in i.saturating_sub(4)..i {
+            let base_j = j * band_w;
+            let val_above = {
+                let d = (last as isize - j as isize + bw as isize) as usize;
+                if d < band_w { band[base_j + d] } else { 0.0 }
+            };
+            if val_above != 0.0 {
+                let mult = val_above;
+                let d = (last as isize - j as isize + bw as isize) as usize;
+                if d < band_w {
+                    band[base_j + d] = 0.0;
+                }
+                if cur_rhs != 0.0 {
+                    rhs[j] -= cur_rhs * mult;
+                }
+            }
+        }
+
+        solved.insert(last);
+    }
+
+    // Sort rows by first non-zero (like reorder_equation_matrix)
+    let mut indexed: Vec<(usize, usize)> = (0..n).map(|i| {
+        let base = i * band_w;
+        let first = (i.saturating_sub(bw)..=((i + bw).min(n - 1)))
+            .find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[base + d as usize] != 0.0
+            })
+            .unwrap_or(0);
+        (i, first)
+    }).collect();
+
+    indexed.sort_by_key(|(_, first)| *first);
+
+    (0..n).map(|pos| rhs[indexed[pos].0]).collect()
 }
 
 pub fn get_graph_spline_interpolation_function_v4(points: &[Point]) -> Option<GraphSpline> {
@@ -888,9 +1051,13 @@ pub fn get_graph_spline_interpolation_function_v4(points: &[Point]) -> Option<Gr
     let points = points.to_vec();
 
     let mut intervals = get_graph_spline_intervals(&points);
-    let rows = build_compact_equation_system_v2(&intervals);
+    let matrix = build_compact_equation_system_v4(&intervals);
 
-    None
+    let solution = solve_1d_banded(&matrix);
+
+    apply_compact_solution_to_intervals(&solution, &mut intervals);
+
+    Some(GraphSpline { intervals })
 }
 
 #[cfg(test)]
