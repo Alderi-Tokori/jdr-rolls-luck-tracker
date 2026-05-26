@@ -1063,6 +1063,22 @@ pub fn get_graph_spline_interpolation_function_v4(points: &[Point]) -> Option<Gr
 fn detect_oscillating_knots(points: &[Point], spline: &GraphSpline) -> HashSet<usize> {
     let mut knots = HashSet::new();
 
+    // Check first point separately (no y_prev to compare against)
+    if points.len() >= 2 && !spline.intervals.is_empty() {
+        let coeffs = &spline.intervals[0].polynomial.coefficients;
+        if coeffs.len() > 1 {
+            let deriv = coeffs[1];
+            let strictly_increasing = points[0].y < points[1].y;
+            if strictly_increasing && deriv < 0.0 {
+                knots.insert(0);
+            }
+            let strictly_decreasing = points[0].y > points[1].y;
+            if strictly_decreasing && deriv > 0.0 {
+                knots.insert(0);
+            }
+        }
+    }
+
     for i in 1..points.len() - 1 {
         let y_prev = points[i - 1].y;
         let y_cur = points[i].y;
@@ -1527,7 +1543,6 @@ mod tests {
         assert!(solution.is_some(), "v5 returned None");
 
         let solution = solution.unwrap();
-        dbg!(& solution);
 
         // Oscillation at point 1 is fixed: intervals 0 and 1 have positive derivatives
         assert!(solution.intervals[0].polynomial.coefficients[1] > 0.0);
@@ -1562,9 +1577,8 @@ mod tests {
         assert!(solution.is_some(), "v5 returned None");
 
         let solution = solution.unwrap();
-        dbg!(& solution);
 
-        // Oscillation at point 1 is fixed: intervals 0 and 1 have positive derivatives
+        // Oscillation at point 0 is fixed: first interval has positive derivative
         assert!(solution.intervals[0].polynomial.coefficients[1] > 0.0);
     }
 
