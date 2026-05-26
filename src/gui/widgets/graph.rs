@@ -3,8 +3,8 @@ use iced::{alignment, mouse, Pixels};
 use iced::widget::{canvas, text};
 use iced::widget::canvas::{Cache, Frame, Path, Stroke, Fill};
 use iced::{Color, Point, Rectangle, Renderer, Size, Theme, Vector};
-use crate::splines;
-use crate::splines::PolynomialFunction;
+use crate::maths::splines;
+use crate::maths::splines::PolynomialFunction;
 
 #[derive(Debug, Clone)]
 pub struct SplineGraph<'a> {
