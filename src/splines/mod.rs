@@ -707,6 +707,170 @@ pub fn get_graph_spline_interpolation_function_v2(points: &[Point]) -> Option<Gr
     Some(GraphSpline { intervals })
 }
 
+fn solve_banded_equation_system(rows: &[CompactRow]) -> Vec<f64> {
+    let n = rows.len();
+
+    let mut bw: usize = 0;
+    for (i, row) in rows.iter().enumerate() {
+        for &(col, _) in &row.entries {
+            let d = if col >= i { col - i } else { i - col };
+            bw = bw.max(d);
+        }
+    }
+    let band_w = 2 * bw + 1;
+
+    let mut band = vec![vec![0.0; band_w]; n];
+    let mut rhs = vec![0.0; n];
+
+    for (i, row) in rows.iter().enumerate() {
+        for &(col, val) in &row.entries {
+            let diag = col as isize - i as isize + bw as isize;
+            band[i][diag as usize] = val;
+        }
+        rhs[i] = row.rhs;
+    }
+
+    let mut solved = HashSet::new();
+    let mut cur = 0usize;
+
+    // First pass: top to bottom (identical logic to solve_equation_matrix)
+    for i in 0..n - 1 {
+        while solved.contains(&cur) {
+            cur += 1;
+        }
+
+        let fnz = {
+            let start_col = cur.max(i.saturating_sub(bw));
+            let end_col = (i + bw).min(n - 1);
+            (start_col..=end_col).find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[i][d as usize] != 0.0
+            })
+        };
+        let fnz = match fnz { Some(c) => c, None => continue };
+
+        let pivot = {
+            let d = (fnz as isize - i as isize + bw as isize) as usize;
+            band[i][d]
+        };
+
+        let mut has_found = false;
+        for j in (i + 1)..min(i + 7, n) {
+            let val_below = {
+                let d = (fnz as isize - j as isize + bw as isize) as usize;
+                if d < band_w { band[j][d] } else { 0.0 }
+            };
+            if val_below != 0.0 {
+                has_found = true;
+                let mult = val_below / pivot;
+
+                let c_start = fnz;
+                let c_end = min(fnz + 4, n).min(i + bw + 1);
+                for c in c_start..c_end {
+                    let di = (c as isize - i as isize + bw as isize) as usize;
+                    if di < band_w && band[i][di] != 0.0 {
+                        let dj = (c as isize - j as isize + bw as isize) as usize;
+                        if dj < band_w {
+                            band[j][dj] -= band[i][di] * mult;
+                        }
+                    }
+                }
+
+                if rhs[i] != 0.0 {
+                    rhs[j] -= rhs[i] * mult;
+                }
+            } else if has_found {
+                break;
+            }
+        }
+
+        solved.insert(fnz);
+    }
+
+    // Second pass: bottom to top (identical logic to solve_equation_matrix)
+    solved.clear();
+    cur = n - 1;
+
+    for i in (1..n).rev() {
+        while cur > 0 && solved.contains(&cur) {
+            cur -= 1;
+        }
+
+        let last = {
+            let end_col = (i + bw).min(n - 1).min(cur);
+            let start_col = i.saturating_sub(bw);
+            (start_col..=end_col).rev().find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[i][d as usize] != 0.0
+            })
+        };
+        let last = match last { Some(c) => c, None => continue };
+
+        let pivot_val = {
+            let d = (last as isize - i as isize + bw as isize) as usize;
+            band[i][d]
+        };
+        if pivot_val != 1.0 {
+            rhs[i] /= pivot_val;
+            let d = (last as isize - i as isize + bw as isize) as usize;
+            band[i][d] = 1.0;
+        }
+
+        let cur_rhs = rhs[i];
+
+        for j in i.saturating_sub(4)..i {
+            let val_above = {
+                let d = (last as isize - j as isize + bw as isize) as usize;
+                if d < band_w { band[j][d] } else { 0.0 }
+            };
+            if val_above != 0.0 {
+                let mult = val_above; // pivot is 1.0
+                let d = (last as isize - j as isize + bw as isize) as usize;
+                if d < band_w {
+                    band[j][d] = 0.0;
+                }
+                if cur_rhs != 0.0 {
+                    rhs[j] -= cur_rhs * mult;
+                }
+            }
+        }
+
+        solved.insert(last);
+    }
+
+    // Sort rows by first non-zero (like reorder_equation_matrix)
+    let mut indexed: Vec<(usize, usize)> = (0..n).map(|i| {
+        let first = (i.saturating_sub(bw)..=((i + bw).min(n - 1)))
+            .find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[i][d as usize] != 0.0
+            })
+            .unwrap_or(0);
+        (i, first)
+    }).collect();
+
+    indexed.sort_by_key(|(_, first)| *first);
+
+    (0..n).map(|pos| rhs[indexed[pos].0]).collect()
+}
+
+pub fn get_graph_spline_interpolation_function_v3(points: &[Point]) -> Option<GraphSpline> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let points = points.to_vec();
+
+    let mut intervals = get_graph_spline_intervals(&points);
+    let rows = build_compact_equation_system(&intervals);
+
+    let solution = solve_banded_equation_system(&rows);
+
+    apply_compact_solution_to_intervals(&solution, &mut intervals);
+
+    Some(GraphSpline { intervals })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -942,6 +1106,7 @@ mod tests {
 
         let solution = get_graph_spline_interpolation_function(&points);
         let solution_v2 = get_graph_spline_interpolation_function_v2(&points);
+        let solution_v3 = get_graph_spline_interpolation_function_v3(&points);
 
         assert_eq!(solution, solution_v2);
     }
@@ -965,14 +1130,19 @@ mod tests {
             let solution_v2 = get_graph_spline_interpolation_function_v2(&points);
             let elapsed_v2 = start.elapsed();
 
+            let start = std::time::Instant::now();
+            let solution_v3 = get_graph_spline_interpolation_function_v3(&points);
+            let elapsed_v3 = start.elapsed();
+
             assert_eq!(solution, solution_v2, "v1 and v2 differ for size {}", size);
+            assert_eq!(solution, solution_v3, "v1 and v3 differ for size {}", size);
 
             println!(
-                "size={:>6} | v1: {:>10.1?} | v2: {:>10.1?} | ratio: {:.2}x",
+                "size={:>6} | v1: {:>10.1?} | v2: {:>10.1?} | v3: {:>10.1?}",
                 size,
                 elapsed_v1,
                 elapsed_v2,
-                elapsed_v1.as_secs_f64() / elapsed_v2.as_secs_f64().max(f64::EPSILON),
+                elapsed_v3,
             );
         }
     }
