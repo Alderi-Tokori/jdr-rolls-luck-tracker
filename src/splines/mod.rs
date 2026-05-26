@@ -338,12 +338,6 @@ impl StackRow {
     }
 
     fn add_entry(&mut self, col: usize, value: f64) {
-        if let Some(last) = self.entries[..self.len].last_mut() {
-            if last.0 == col {
-                last.1 += value;
-                return;
-            }
-        }
         self.entries[self.len] = (col, value);
         self.len += 1;
     }
