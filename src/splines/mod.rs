@@ -990,6 +990,96 @@ fn build_compact_equation_system_v5(intervals: &Vec<GraphSplineInterval>) -> Com
     Compact1DBandMatrix { n, bw, band_width, band, rhs }
 }
 
+fn compute_equation_metadata(intervals: &[GraphSplineInterval]) -> (usize, usize) {
+    let mut n: usize = 1;
+    let mut bw: usize = 0;
+    let mut coeff_idx: usize = 0;
+    let mut row_idx: usize = 1;
+
+    for pair in intervals.windows(2) {
+        let len_left = pair[0].polynomial.coefficients.len();
+        let len_right = pair[1].polynomial.coefficients.len();
+        let c1 = coeff_idx + len_left;
+
+        let min_c = coeff_idx;
+        let max_c = coeff_idx + len_left - 1;
+        bw = bw.max(row_idx.abs_diff(min_c)).max(row_idx.abs_diff(max_c));
+        row_idx += 1;
+        n += 1;
+
+        if len_left == 5 {
+            let min_c = coeff_idx + 1;
+            let max_c = coeff_idx + len_left - 1;
+            bw = bw.max(row_idx.abs_diff(min_c)).max(row_idx.abs_diff(max_c));
+            row_idx += 1;
+            n += 1;
+        }
+
+        let min_c = coeff_idx + 1;
+        let max_c = c1 + len_right - 1;
+        bw = bw.max(row_idx.abs_diff(min_c)).max(row_idx.abs_diff(max_c));
+        row_idx += 1;
+        n += 1;
+
+        if coeff_idx == 0 {
+            let col = coeff_idx + 2;
+            bw = bw.max(row_idx.abs_diff(col));
+            row_idx += 1;
+            n += 1;
+        }
+
+        let min_c = coeff_idx + 2;
+        let max_c = c1 + len_right - 1;
+        bw = bw.max(row_idx.abs_diff(min_c)).max(row_idx.abs_diff(max_c));
+        row_idx += 1;
+        n += 1;
+
+        let min_c = c1;
+        let max_c = c1 + len_right - 1;
+        bw = bw.max(row_idx.abs_diff(min_c)).max(row_idx.abs_diff(max_c));
+        row_idx += 1;
+        n += 1;
+
+        coeff_idx += len_left;
+    }
+
+    let last = intervals.last().unwrap();
+    let len_last = last.polynomial.coefficients.len();
+
+    let min_c = coeff_idx;
+    let max_c = coeff_idx + len_last - 1;
+    bw = bw.max(row_idx.abs_diff(min_c)).max(row_idx.abs_diff(max_c));
+    row_idx += 1;
+    n += 1;
+
+    let min_c = coeff_idx + 2;
+    let max_c = coeff_idx + len_last - 1;
+    bw = bw.max(row_idx.abs_diff(min_c)).max(row_idx.abs_diff(max_c));
+    n += 1;
+
+    (n, bw)
+}
+
+fn build_compact_equation_system_v9(intervals: &Vec<GraphSplineInterval>) -> Compact1DBandMatrix {
+    let (n, bw) = compute_equation_metadata(intervals);
+
+    let band_width = 2 * bw + 1;
+    let mut band = vec![0.0; n * band_width];
+    let mut rhs = vec![0.0; n];
+
+    let mut i: usize = 0;
+    for_each_equation_row_v2(intervals, |row| {
+        for &(col, val) in row.as_slice() {
+            let diag = col as isize - i as isize + bw as isize;
+            band[i * band_width + diag as usize] = val;
+        }
+        rhs[i] = row.rhs;
+        i += 1;
+    });
+
+    Compact1DBandMatrix { n, bw, band_width, band, rhs }
+}
+
 fn build_compact_equation_system_v6(intervals: &Vec<GraphSplineInterval>) -> Compact1DBandMatrix {
     let mut n: usize = 0;
     let mut bw: usize = 0;
@@ -1539,6 +1629,23 @@ pub fn get_graph_spline_interpolation_function_v8(points: &[Point]) -> Option<Gr
     Some(GraphSpline { intervals })
 }
 
+pub fn get_graph_spline_interpolation_function_v9(points: &[Point]) -> Option<GraphSpline> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let points = points.to_vec();
+
+    let mut intervals = get_graph_spline_intervals(&points);
+    let matrix = build_compact_equation_system_v9(&intervals);
+
+    let solution = solve_1d_banded_v7(matrix);
+
+    apply_compact_solution_to_intervals(&solution, &mut intervals);
+
+    Some(GraphSpline { intervals })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1709,12 +1816,14 @@ mod tests {
         let solution_v6 = get_graph_spline_interpolation_function_v6(&points);
         let solution_v7 = get_graph_spline_interpolation_function_v7(&points);
         let solution_v8 = get_graph_spline_interpolation_function_v8(&points);
+        let solution_v9 = get_graph_spline_interpolation_function_v9(&points);
 
         assert_eq!(solution_v3, solution_v4);
         assert_eq!(solution_v3, solution_v5);
         assert_eq!(solution_v3, solution_v6);
         assert_eq!(solution_v3, solution_v7);
         assert_eq!(solution_v3, solution_v8);
+        assert_eq!(solution_v3, solution_v9);
     }
 
     #[test]
@@ -1752,14 +1861,19 @@ mod tests {
             let solution_v8 = get_graph_spline_interpolation_function_v8(&points);
             let elapsed_v8 = start.elapsed();
 
+            let start = std::time::Instant::now();
+            let solution_v9 = get_graph_spline_interpolation_function_v9(&points);
+            let elapsed_v9 = start.elapsed();
+
             assert_eq!(solution_v3, solution_v4, "v3 and v4 differ for size {}", size);
             assert_eq!(solution_v3, solution_v5, "v3 and v5 differ for size {}", size);
             assert_eq!(solution_v3, solution_v6, "v3 and v6 differ for size {}", size);
             assert_eq!(solution_v3, solution_v7, "v3 and v7 differ for size {}", size);
             assert_eq!(solution_v3, solution_v8, "v3 and v8 differ for size {}", size);
+            assert_eq!(solution_v3, solution_v9, "v3 and v9 differ for size {}", size);
 
             println!(
-                "size={:>6} | v3: {:>10.1?} | v4: {:>10.1?} | v5: {:>10.1?} | v6: {:>10.1?} | v7: {:>10.1?} | v8: {:>10.1?}",
+                "size={:>6} | v3: {:>10.1?} | v4: {:>10.1?} | v5: {:>10.1?} | v6: {:>10.1?} | v7: {:>10.1?} | v8: {:>10.1?} | v9: {:>10.1?}",
                 size,
                 elapsed_v3,
                 elapsed_v4,
@@ -1767,6 +1881,7 @@ mod tests {
                 elapsed_v6,
                 elapsed_v7,
                 elapsed_v8,
+                elapsed_v9,
             );
         }
     }
