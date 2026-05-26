@@ -484,6 +484,16 @@ pub fn get_graph_spline_interpolation_function(points: impl Into<Vec<Point>>) ->
     })
 }
 
+pub fn get_graph_spline_interpolation_function_v2(points: impl Into<Vec<Point>>) -> Option<GraphSpline> {
+    let points: Vec<Point> = points.into();
+
+    if points.len() < 2 {
+        return None;
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -652,7 +662,7 @@ mod tests {
             vec![0.0,   0.0,   0.0,   0.0,   0.0,      0.0,   0.0,   0.0,   0.0,   0.0,      0.0,   0.0,   0.0,   0.0,      0.0,   0.0,   0.0,   0.0,   0.0,      0.0,   0.0,   2.0,   6.0,      0.0],
         ]);
     }
-    
+
     #[test]
     fn it_correctly_solves_the_equation_matrix() {
         let points = vec![
@@ -703,5 +713,23 @@ mod tests {
                 ]
             }
         ))
+    }
+
+    #[test]
+    fn it_correctly_solves_the_equation_matrix_with_version_2() {
+        let points = vec![
+            Point {x: 0.0, y: 2.0},
+            Point {x: 1.0, y: 3.0},
+            Point {x: 2.0, y: 4.0},
+            Point {x: 3.0, y: 1.0},
+            Point {x: 4.0, y: 3.0},
+            Point {x: 5.0, y: 5.0},
+            Point {x: 6.0, y: 2.0}
+        ];
+
+        let solution = get_graph_spline_interpolation_function(& points);
+        let solution_v2 = get_graph_spline_interpolation_function_v2(& points);
+
+        assert_eq!(solution, solution_v2);
     }
 }
