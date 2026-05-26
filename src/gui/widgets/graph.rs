@@ -54,7 +54,7 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
         }
 
         let data: Vec<splines::Point> = data_iced.iter().map(|p| p.into()).collect();
-        let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function_v5(&data) {
+        let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function_v4(&data) {
             Some(p) => p,
             None => return vec![frame.into_geometry()]
         };
@@ -120,6 +120,17 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
                 ..canvas::Text::default()
             });
         });
+
+        // Points
+        let radius = 3.0;
+        let fill = Fill::from(self.line_color);
+        for point in data_iced {
+            let center = Point::new(
+                map_x(graph_w, min_x, x_range, point.x),
+                map_y(graph_h, min_y, y_range, point.y),
+            );
+            frame.fill(&Path::circle(center, radius), fill);
+        }
 
         vec![frame.into_geometry()]
     }
