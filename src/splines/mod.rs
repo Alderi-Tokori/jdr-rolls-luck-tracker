@@ -28,19 +28,14 @@ struct Polynomial {
 
 impl PolynomialFunction for Polynomial {
     fn eval(&self, x: f64) -> Option<f64> {
-        if self.coefficients.len() == 0 {
+        if self.coefficients.is_empty() {
             return None;
         }
-
-        let mut sum = 0.0;
-        let mut x_degree = 1.0;
-
-        self.coefficients.iter().for_each(|c| {
-            sum += c * x_degree;
-            x_degree *= x;
-        });
-
-        Some(sum)
+        let mut result = 0.0;
+        for &c in self.coefficients.iter().rev() {
+            result = result * x + c;
+        }
+        Some(result)
     }
 }
 
