@@ -59,7 +59,6 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
             None => return vec![frame.into_geometry()]
         };
 
-
         let min_x = data_iced.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
         let max_x = data_iced.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
         let min_y = self.min_y.unwrap_or(data_iced.iter().map(|p| p.y).fold(f32::INFINITY, f32::min));

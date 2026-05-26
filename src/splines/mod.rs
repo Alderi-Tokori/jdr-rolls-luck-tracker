@@ -837,7 +837,7 @@ mod tests {
     }
 
     #[test]
-    fn benchmarks() {
+    fn benchmarks_solver() {
         for size in &[10, 100, 1000, 10000, 100000] {
             let points: Vec<Point> = (0..*size)
                 .map(|i| {
@@ -862,6 +862,43 @@ mod tests {
                 size,
                 elapsed_v3,
                 elapsed_v4,
+            );
+        }
+    }
+
+    #[test]
+    fn benchmarks_eval() {
+        for size in &[10, 100, 1000, 10000] {
+            let points: Vec<Point> = (0..*size)
+                .map(|i| {
+                    let x = i as f64 * 0.5;
+                    let y = (x * 0.3).sin() * 100.0 + i as f64 % 7.0 * 3.0;
+                    Point { x, y }
+                })
+                .collect();
+
+            let solution = get_graph_spline_interpolation_function_v4(&points);
+
+            assert!(solution.is_some());
+
+            let solution = solution.unwrap();
+
+            let start = std::time::Instant::now();
+            for interval in &solution.intervals {
+                let segment_step = (interval.end.x - interval.start.x) / 50.0;
+
+                for segment_idx in 1..=50 {
+                    let x = interval.start.x + (segment_idx as f64) * segment_step;
+
+                    solution.eval(x).unwrap_or(0.0);
+                }
+            }
+            let elapsed = start.elapsed();
+
+            println!(
+                "size={:>6} | eval_v1: {:>10.1?}",
+                size,
+                elapsed,
             );
         }
     }
