@@ -1670,6 +1670,140 @@ fn solve_1d_banded_v10(mat: Compact1DBandMatrix) -> Vec<f64> {
     (0..n).map(|pos| rhs[indexed[pos].0]).collect()
 }
 
+fn solve_1d_banded_v11(mat: Compact1DBandMatrix) -> Vec<f64> {
+    let n = mat.n;
+    let bw = mat.bw;
+    let band_w = mat.band_width;
+    let mut band = mat.band;
+    let mut rhs = mat.rhs;
+
+    let mut solved_gen = vec![0u8; n];
+    let mut generation: u8 = 1;
+    let mut cur: usize = 0;
+
+    for i in 0..n - 1 {
+        while cur < n && solved_gen[cur] == generation {
+            cur += 1;
+        }
+
+        let base_i = i * band_w;
+        let fnz = {
+            let start_col = cur.max(i.saturating_sub(bw));
+            let end_col = (i + bw).min(n - 1);
+            (start_col..=end_col).find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[base_i + d as usize] != 0.0
+            })
+        };
+        let fnz = match fnz { Some(c) => c, None => continue };
+
+        let pivot = {
+            let d = (fnz as isize - i as isize + bw as isize) as usize;
+            band[base_i + d]
+        };
+
+        let mut has_found = false;
+        for j in (i + 1)..min(i + 7, n) {
+            let base_j = j * band_w;
+            let val_below = {
+                let d = (fnz as isize - j as isize + bw as isize) as usize;
+                if d < band_w { band[base_j + d] } else { 0.0 }
+            };
+            if val_below != 0.0 {
+                has_found = true;
+                let mult = val_below / pivot;
+
+                let c_start = fnz;
+                let c_end = min(fnz + 4, n).min(i + bw + 1);
+                for c in c_start..c_end {
+                    let di = (c as isize - i as isize + bw as isize) as usize;
+                    if di < band_w && band[base_i + di] != 0.0 {
+                        let dj = (c as isize - j as isize + bw as isize) as usize;
+                        if dj < band_w {
+                            band[base_j + dj] -= band[base_i + di] * mult;
+                        }
+                    }
+                }
+
+                if rhs[i] != 0.0 {
+                    rhs[j] -= rhs[i] * mult;
+                }
+            } else if has_found {
+                break;
+            }
+        }
+
+        solved_gen[fnz] = generation;
+    }
+
+    generation += 1;
+    cur = n.saturating_sub(1);
+
+    for i in (1..n).rev() {
+        while cur > 0 && solved_gen[cur] == generation {
+            cur -= 1;
+        }
+
+        let base_i = i * band_w;
+        let last = {
+            let end_col = (i + bw).min(n - 1).min(cur);
+            let start_col = i.saturating_sub(bw);
+            (start_col..=end_col).rev().find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[base_i + d as usize] != 0.0
+            })
+        };
+        let last = match last { Some(c) => c, None => continue };
+
+        let pivot_val = {
+            let d = (last as isize - i as isize + bw as isize) as usize;
+            band[base_i + d]
+        };
+        if pivot_val != 1.0 {
+            rhs[i] /= pivot_val;
+            let d = (last as isize - i as isize + bw as isize) as usize;
+            band[base_i + d] = 1.0;
+        }
+
+        let cur_rhs = rhs[i];
+
+        for j in i.saturating_sub(4)..i {
+            let base_j = j * band_w;
+            let val_above = {
+                let d = (last as isize - j as isize + bw as isize) as usize;
+                if d < band_w { band[base_j + d] } else { 0.0 }
+            };
+            if val_above != 0.0 {
+                let mult = val_above;
+                let d = (last as isize - j as isize + bw as isize) as usize;
+                if d < band_w {
+                    band[base_j + d] = 0.0;
+                }
+                if cur_rhs != 0.0 {
+                    rhs[j] -= cur_rhs * mult;
+                }
+            }
+        }
+
+        solved_gen[last] = generation;
+    }
+
+    let mut indexed: Vec<(usize, usize)> = (0..n).map(|i| {
+        let base = i * band_w;
+        let first = (i.saturating_sub(bw)..=((i + bw).min(n - 1)))
+            .find(|&c| {
+                let d = c as isize - i as isize + bw as isize;
+                d >= 0 && (d as usize) < band_w && band[base + d as usize] != 0.0
+            })
+            .unwrap_or(0);
+        (i, first)
+    }).collect();
+
+    indexed.sort_by_key(|(_, first)| *first);
+
+    (0..n).map(|pos| rhs[indexed[pos].0]).collect()
+}
+
 pub fn get_graph_spline_interpolation_function_v4(points: &[Point]) -> Option<GraphSpline> {
     if points.len() < 2 {
         return None;
@@ -1769,6 +1903,21 @@ pub fn get_graph_spline_interpolation_function_v10(points: &[Point]) -> Option<G
     let matrix = build_compact_equation_system_v9(&intervals);
 
     let solution = solve_1d_banded_v10(matrix);
+
+    apply_compact_solution_to_intervals(&solution, &mut intervals);
+
+    Some(GraphSpline { intervals })
+}
+
+pub fn get_graph_spline_interpolation_function_v11(points: &[Point]) -> Option<GraphSpline> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let mut intervals = get_graph_spline_intervals(points);
+    let matrix = build_compact_equation_system_v9(&intervals);
+
+    let solution = solve_1d_banded_v11(matrix);
 
     apply_compact_solution_to_intervals(&solution, &mut intervals);
 
@@ -1947,6 +2096,7 @@ mod tests {
         let solution_v8 = get_graph_spline_interpolation_function_v8(&points);
         let solution_v9 = get_graph_spline_interpolation_function_v9(&points);
         let solution_v10 = get_graph_spline_interpolation_function_v10(&points);
+        let solution_v11 = get_graph_spline_interpolation_function_v11(&points);
 
         assert_eq!(solution_v3, solution_v4);
         assert_eq!(solution_v3, solution_v5);
@@ -1955,6 +2105,7 @@ mod tests {
         assert_eq!(solution_v3, solution_v8);
         assert_eq!(solution_v3, solution_v9);
         assert_eq!(solution_v3, solution_v10);
+        assert_eq!(solution_v3, solution_v11);
     }
 
     #[test]
@@ -2000,6 +2151,10 @@ mod tests {
             let solution_v10 = get_graph_spline_interpolation_function_v10(&points);
             let elapsed_v10 = start.elapsed();
 
+            let start = std::time::Instant::now();
+            let solution_v11 = get_graph_spline_interpolation_function_v11(&points);
+            let elapsed_v11 = start.elapsed();
+
             assert_eq!(solution_v3, solution_v4, "v3 and v4 differ for size {}", size);
             assert_eq!(solution_v3, solution_v5, "v3 and v5 differ for size {}", size);
             assert_eq!(solution_v3, solution_v6, "v3 and v6 differ for size {}", size);
@@ -2007,9 +2162,10 @@ mod tests {
             assert_eq!(solution_v3, solution_v8, "v3 and v8 differ for size {}", size);
             assert_eq!(solution_v3, solution_v9, "v3 and v9 differ for size {}", size);
             assert_eq!(solution_v3, solution_v10, "v3 and v10 differ for size {}", size);
+            assert_eq!(solution_v3, solution_v11, "v3 and v11 differ for size {}", size);
 
             println!(
-                "size={:>6} | v3: {:>10.1?} | v4: {:>10.1?} | v5: {:>10.1?} | v6: {:>10.1?} | v7: {:>10.1?} | v8: {:>10.1?} | v9: {:>10.1?} | v10: {:>10.1?}",
+                "size={:>6} | v3: {:>10.1?} | v4: {:>10.1?} | v5: {:>10.1?} | v6: {:>10.1?} | v7: {:>10.1?} | v8: {:>10.1?} | v9: {:>10.1?} | v10: {:>10.1?} | v11: {:>10.1?}",
                 size,
                 elapsed_v3,
                 elapsed_v4,
@@ -2019,6 +2175,7 @@ mod tests {
                 elapsed_v8,
                 elapsed_v9,
                 elapsed_v10,
+                elapsed_v11,
             );
         }
     }
