@@ -871,6 +871,28 @@ pub fn get_graph_spline_interpolation_function_v3(points: &[Point]) -> Option<Gr
     Some(GraphSpline { intervals })
 }
 
+// We put everything into a one dimensional array to maximize cache hits
+struct Compact1DBandMatrix {
+    band: Vec<f64>
+}
+
+fn build_compact_equation_system_v2(intervals: &Vec<GraphSplineInterval>) -> Compact1DBandMatrix {
+
+}
+
+pub fn get_graph_spline_interpolation_function_v4(points: &[Point]) -> Option<GraphSpline> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let points = points.to_vec();
+
+    let mut intervals = get_graph_spline_intervals(&points);
+    let rows = build_compact_equation_system_v2(&intervals);
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1107,12 +1129,15 @@ mod tests {
         let solution = get_graph_spline_interpolation_function(&points);
         let solution_v2 = get_graph_spline_interpolation_function_v2(&points);
         let solution_v3 = get_graph_spline_interpolation_function_v3(&points);
+        let solution_v4 = get_graph_spline_interpolation_function_v4(&points);
 
         assert_eq!(solution, solution_v2);
+        assert_eq!(solution, solution_v3);
+        assert_eq!(solution, solution_v4);
     }
 
     #[test]
-    fn benchmark_v1_vs_v2() {
+    fn benchmarks() {
         for size in &[10, 100, 1000, 10000] {
             let points: Vec<Point> = (0..*size)
                 .map(|i| {
@@ -1134,15 +1159,21 @@ mod tests {
             let solution_v3 = get_graph_spline_interpolation_function_v3(&points);
             let elapsed_v3 = start.elapsed();
 
+            let start = std::time::Instant::now();
+            let solution_v4 = get_graph_spline_interpolation_function_v4(&points);
+            let elapsed_v4 = start.elapsed();
+
             assert_eq!(solution, solution_v2, "v1 and v2 differ for size {}", size);
             assert_eq!(solution, solution_v3, "v1 and v3 differ for size {}", size);
+            assert_eq!(solution, solution_v4, "v1 and v4 differ for size {}", size);
 
             println!(
-                "size={:>6} | v1: {:>10.1?} | v2: {:>10.1?} | v3: {:>10.1?}",
+                "size={:>6} | v1: {:>10.1?} | v2: {:>10.1?} | v3: {:>10.1?} | v4: {:>10.1?}",
                 size,
                 elapsed_v1,
                 elapsed_v2,
                 elapsed_v3,
+                elapsed_v4,
             );
         }
     }
