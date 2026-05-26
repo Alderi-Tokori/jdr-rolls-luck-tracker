@@ -2,7 +2,7 @@ use core::cmp::Ordering;
 use std::collections::HashSet;
 use std::cmp::min;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
@@ -21,7 +21,7 @@ pub trait PolynomialFunction {
     fn eval(&self, x: f64) -> Option<f64>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Polynomial {
     coefficients: Vec<f64>,
 }
@@ -44,7 +44,7 @@ impl PolynomialFunction for Polynomial {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct GraphSplineInterval {
     pub start: Point,
     pub end: Point,
@@ -57,7 +57,7 @@ impl PolynomialFunction for GraphSplineInterval {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct GraphSpline {
     pub intervals: Vec<GraphSplineInterval>
 }
@@ -665,13 +665,43 @@ mod tests {
             Point {x: 6.0, y: 2.0}
         ];
 
-        let mut intervals = get_graph_spline_intervals(&points);
-        let mut equation_matrix = get_graph_spline_equation_matrix(&intervals);
-        
-        solve_equation_matrix(&mut equation_matrix);
-        apply_matrix_solution_to_intervals(&equation_matrix, &mut intervals);
-        
-        dbg!(equation_matrix);
-        dbg!(intervals);
+        let solution = get_graph_spline_interpolation_function(points);
+
+        assert_eq!(solution, Some(
+            GraphSpline {
+                intervals: vec![
+                    GraphSplineInterval {
+                        start: Point {x: 0.0, y: 2.0},
+                        end: Point {x: 1.0, y: 3.0},
+                        polynomial: Polynomial {coefficients: vec![2.0, 2.3000000000000003, 0.0, -1.3000000000000003]}
+                    },
+                    GraphSplineInterval {
+                        start: Point {x: 1.0, y: 3.0},
+                        end: Point {x: 2.0, y: 4.0},
+                        polynomial: Polynomial {coefficients: vec![3.0, -1.6000000000000008, -3.9000000000000012, 16.6, -10.1]}
+                    },
+                    GraphSplineInterval {
+                        start: Point {x: 2.0, y: 4.0},
+                        end: Point {x: 3.0, y: 1.0},
+                        polynomial: Polynomial {coefficients: vec![4.0, 0.0, -14.7, 17.4, -5.7]}
+                    },
+                    GraphSplineInterval {
+                        start: Point {x: 3.0, y: 1.0},
+                        end: Point {x: 4.0, y: 3.0},
+                        polynomial: Polynomial {coefficients: vec![1.0, 0.0, 3.3, -1.2999999999999998]}
+                    },
+                    GraphSplineInterval {
+                        start: Point {x: 4.0, y: 3.0},
+                        end: Point {x: 5.0, y: 5.0},
+                        polynomial: Polynomial {coefficients: vec![3.0, 2.7, -0.5999999999999998, 1.0999999999999996, -1.2]}
+                    },
+                    GraphSplineInterval {
+                        start: Point {x: 5.0, y: 5.0},
+                        end: Point {x: 6.0, y: 2.0},
+                        polynomial: Polynomial {coefficients: vec![5.0, 0.0, -4.5, 1.5]}
+                    },
+                ]
+            }
+        ))
     }
 }
