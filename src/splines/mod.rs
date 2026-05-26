@@ -462,14 +462,13 @@ fn apply_matrix_solution_to_intervals(equation_matrix: & Vec<Vec<f64>>, interval
     }
 }
 
-pub fn get_graph_spline_interpolation_function(points: impl Into<Vec<Point>>) -> Option<GraphSpline> {
-    let points: Vec<Point> = points.into();
-
+pub fn get_graph_spline_interpolation_function(points: &[Point]) -> Option<GraphSpline> {
     if points.len() < 2 {
         return None;
     }
 
-    // We're going to construct the equation system from the points
+    let points = points.to_vec();
+
     let mut intervals = get_graph_spline_intervals(&points);
     let mut equation_matrix = get_graph_spline_equation_matrix(&intervals);
 
@@ -484,14 +483,228 @@ pub fn get_graph_spline_interpolation_function(points: impl Into<Vec<Point>>) ->
     })
 }
 
-pub fn get_graph_spline_interpolation_function_v2(points: impl Into<Vec<Point>>) -> Option<GraphSpline> {
-    let points: Vec<Point> = points.into();
+#[derive(Debug, Clone)]
+struct CompactRow {
+    entries: Vec<(usize, f64)>,
+    rhs: f64,
+}
 
+impl CompactRow {
+    fn new() -> Self {
+        CompactRow {
+            entries: Vec::new(),
+            rhs: 0.0,
+        }
+    }
+
+    fn add_entry(&mut self, col: usize, value: f64) {
+        match self.entries.binary_search_by_key(&col, |(c, _)| *c) {
+            Ok(idx) => self.entries[idx].1 += value,
+            Err(idx) => self.entries.insert(idx, (col, value)),
+        }
+    }
+}
+
+fn add_equation_factors_to_compact_row(
+    row: &mut CompactRow,
+    coefficient_idx: usize,
+    nb_coefficients: usize,
+    x_value: f64,
+    derivative: usize,
+    sign: f64,
+) {
+    let mut cur_x_value = 1.0;
+    for i in derivative..nb_coefficients {
+        let mut derivative_coeff = 1.0;
+        for j in 0..derivative {
+            derivative_coeff = derivative_coeff * ((i - j) as f64);
+        }
+
+        row.add_entry(coefficient_idx + i, derivative_coeff * cur_x_value * sign);
+        cur_x_value *= x_value;
+    }
+}
+
+fn build_compact_equation_system(intervals: &Vec<GraphSplineInterval>) -> Vec<CompactRow> {
+    let mut rows = Vec::new();
+
+    let first_interval = intervals.first().expect("We should have at least one interval if we called this function");
+    let mut row = CompactRow::new();
+    row.add_entry(0, 1.0);
+    row.rhs = first_interval.start.y;
+    rows.push(row);
+
+    let mut coefficient_idx = 0;
+    let mut has_done_initial_boundary_condtition = false;
+
+    intervals.windows(2).for_each(|intervals_pair| {
+        let max_x_value_left = intervals_pair[0].end.x - intervals_pair[0].start.x;
+        let coefficient_idx_right = coefficient_idx + intervals_pair[0].polynomial.coefficients.len();
+
+        let mut row = CompactRow::new();
+        add_equation_factors_to_compact_row(
+            &mut row,
+            coefficient_idx,
+            intervals_pair[0].polynomial.coefficients.len(),
+            max_x_value_left,
+            0,
+            1.0,
+        );
+        row.rhs = intervals_pair[0].end.y;
+        rows.push(row);
+
+        if intervals_pair[0].polynomial.coefficients.len() == 5 {
+            let mut row = CompactRow::new();
+            add_equation_factors_to_compact_row(
+                &mut row,
+                coefficient_idx,
+                intervals_pair[0].polynomial.coefficients.len(),
+                max_x_value_left,
+                1,
+                1.0,
+            );
+            rows.push(row);
+        }
+
+        let derivative_number = 1;
+        let mut row = CompactRow::new();
+        add_equation_factors_to_compact_row(
+            &mut row,
+            coefficient_idx,
+            intervals_pair[0].polynomial.coefficients.len(),
+            max_x_value_left,
+            derivative_number,
+            1.0,
+        );
+        add_equation_factors_to_compact_row(
+            &mut row,
+            coefficient_idx_right,
+            intervals_pair[1].polynomial.coefficients.len(),
+            0.0,
+            derivative_number,
+            -1.0,
+        );
+        rows.push(row);
+
+        if !has_done_initial_boundary_condtition {
+            let mut row = CompactRow::new();
+            row.add_entry(coefficient_idx + 2, 2.0);
+            rows.push(row);
+            has_done_initial_boundary_condtition = true;
+        }
+
+        let derivative_number = 2;
+        let mut row = CompactRow::new();
+        add_equation_factors_to_compact_row(
+            &mut row,
+            coefficient_idx,
+            intervals_pair[0].polynomial.coefficients.len(),
+            max_x_value_left,
+            derivative_number,
+            1.0,
+        );
+        add_equation_factors_to_compact_row(
+            &mut row,
+            coefficient_idx_right,
+            intervals_pair[1].polynomial.coefficients.len(),
+            0.0,
+            derivative_number,
+            -1.0,
+        );
+        rows.push(row);
+
+        let mut row = CompactRow::new();
+        add_equation_factors_to_compact_row(
+            &mut row,
+            coefficient_idx_right,
+            intervals_pair[1].polynomial.coefficients.len(),
+            0.0,
+            0,
+            1.0,
+        );
+        row.rhs = intervals_pair[1].start.y;
+        rows.push(row);
+
+        coefficient_idx += intervals_pair[0].polynomial.coefficients.len();
+    });
+
+    let last_interval = intervals.last().expect("We should have at least one interval if we called this function");
+    let max_x_value = last_interval.end.x - last_interval.start.x;
+    let mut row = CompactRow::new();
+    add_equation_factors_to_compact_row(
+        &mut row,
+        coefficient_idx,
+        last_interval.polynomial.coefficients.len(),
+        max_x_value,
+        0,
+        1.0,
+    );
+    row.rhs = last_interval.end.y;
+    rows.push(row);
+
+    let mut row = CompactRow::new();
+    add_equation_factors_to_compact_row(
+        &mut row,
+        coefficient_idx,
+        last_interval.polynomial.coefficients.len(),
+        max_x_value,
+        2,
+        1.0,
+    );
+    rows.push(row);
+
+    rows
+}
+
+fn solve_compact_equation_system(rows: &Vec<CompactRow>) -> Vec<f64> {
+    // Convert compact rows to dense matrix, use proven dense solver
+    let nb_equations = rows.len();
+    let solution_idx = nb_equations;
+
+    let mut dense = vec![vec![0.0; nb_equations + 1]; nb_equations];
+    for (i, row) in rows.iter().enumerate() {
+        for &(col, val) in &row.entries {
+            dense[i][col] = val;
+        }
+        dense[i][solution_idx] = row.rhs;
+    }
+
+    solve_equation_matrix(&mut dense);
+
+    (0..nb_equations)
+        .map(|i| dense[i][solution_idx])
+        .collect()
+}
+
+fn apply_compact_solution_to_intervals(solution: &[f64], intervals: &mut Vec<GraphSplineInterval>) {
+    let mut cur_offset = 0;
+
+    for cur_interval in intervals {
+        let nb_coeffs = cur_interval.polynomial.coefficients.len();
+
+        for i in 0..nb_coeffs {
+            cur_interval.polynomial.coefficients[i] = solution[cur_offset + i];
+        }
+
+        cur_offset += nb_coeffs;
+    }
+}
+
+pub fn get_graph_spline_interpolation_function_v2(points: &[Point]) -> Option<GraphSpline> {
     if points.len() < 2 {
         return None;
     }
 
-    None
+    let points = points.to_vec();
+
+    let mut intervals = get_graph_spline_intervals(&points);
+    let rows = build_compact_equation_system(&intervals);
+
+    let solution = solve_compact_equation_system(&rows);
+
+    apply_compact_solution_to_intervals(&solution, &mut intervals);
+
+    Some(GraphSpline { intervals })
 }
 
 #[cfg(test)]
@@ -675,7 +888,7 @@ mod tests {
             Point {x: 6.0, y: 2.0}
         ];
 
-        let solution = get_graph_spline_interpolation_function(points);
+        let solution = get_graph_spline_interpolation_function(&points);
 
         assert_eq!(solution, Some(
             GraphSpline {
@@ -727,9 +940,40 @@ mod tests {
             Point {x: 6.0, y: 2.0}
         ];
 
-        let solution = get_graph_spline_interpolation_function(& points);
-        let solution_v2 = get_graph_spline_interpolation_function_v2(& points);
+        let solution = get_graph_spline_interpolation_function(&points);
+        let solution_v2 = get_graph_spline_interpolation_function_v2(&points);
 
         assert_eq!(solution, solution_v2);
+    }
+
+    #[test]
+    fn benchmark_v1_vs_v2() {
+        for size in &[10, 100, 1000, 10000] {
+            let points: Vec<Point> = (0..*size)
+                .map(|i| {
+                    let x = i as f64 * 0.5;
+                    let y = (x * 0.3).sin() * 100.0 + i as f64 % 7.0 * 3.0;
+                    Point { x, y }
+                })
+                .collect();
+
+            let start = std::time::Instant::now();
+            let solution = get_graph_spline_interpolation_function(&points);
+            let elapsed_v1 = start.elapsed();
+
+            let start = std::time::Instant::now();
+            let solution_v2 = get_graph_spline_interpolation_function_v2(&points);
+            let elapsed_v2 = start.elapsed();
+
+            assert_eq!(solution, solution_v2, "v1 and v2 differ for size {}", size);
+
+            println!(
+                "size={:>6} | v1: {:>10.1?} | v2: {:>10.1?} | ratio: {:.2}x",
+                size,
+                elapsed_v1,
+                elapsed_v2,
+                elapsed_v1.as_secs_f64() / elapsed_v2.as_secs_f64().max(f64::EPSILON),
+            );
+        }
     }
 }

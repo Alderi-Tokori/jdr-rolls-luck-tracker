@@ -54,7 +54,7 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
         }
 
         let data: Vec<splines::Point> = data_iced.iter().map(|p| p.into()).collect();
-        let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function(data) {
+        let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function(&data) {
             Some(p) => p,
             None => return vec![frame.into_geometry()]
         };
