@@ -21,7 +21,7 @@ pub trait PolynomialFunction {
     fn eval(&self, x: f64) -> Option<f64>;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 struct Polynomial {
     coefficients: Vec<f64>,
 }
@@ -44,7 +44,7 @@ impl PolynomialFunction for Polynomial {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct GraphSplineInterval {
     pub start: Point,
     pub end: Point,
@@ -57,7 +57,7 @@ impl PolynomialFunction for GraphSplineInterval {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct GraphSpline {
     pub intervals: Vec<GraphSplineInterval>
 }
@@ -1060,6 +1060,198 @@ pub fn get_graph_spline_interpolation_function_v4(points: &[Point]) -> Option<Gr
     Some(GraphSpline { intervals })
 }
 
+fn detect_oscillating_knots(points: &[Point], spline: &GraphSpline) -> HashSet<usize> {
+    let mut knots = HashSet::new();
+
+    for i in 1..points.len() - 1 {
+        let y_prev = points[i - 1].y;
+        let y_cur = points[i].y;
+        let y_next = points[i + 1].y;
+
+        let strictly_increasing = y_prev < y_cur && y_cur < y_next;
+        let strictly_decreasing = y_prev > y_cur && y_cur > y_next;
+
+        if !strictly_increasing && !strictly_decreasing {
+            continue;
+        }
+
+        // Derivative at knot = polynomials[i].coeffs[1] since x=0 at start of interval
+        let deriv = if i < spline.intervals.len() {
+            let coeffs = &spline.intervals[i].polynomial.coefficients;
+            if coeffs.len() > 1 { coeffs[1] } else { 0.0 }
+        } else {
+            0.0
+        };
+
+        if (strictly_increasing && deriv < 0.0) || (strictly_decreasing && deriv > 0.0) {
+            knots.insert(i - 1);
+        }
+    }
+
+    knots
+}
+
+fn build_compact_equation_system_v5(
+    intervals: &Vec<GraphSplineInterval>,
+    relaxed_knots: &HashSet<usize>,
+) -> Vec<CompactRow> {
+    let mut rows = Vec::new();
+
+    let first_interval = intervals.first().expect("We should have at least one interval");
+    let mut row = CompactRow::new();
+    row.add_entry(0, 1.0);
+    row.rhs = first_interval.start.y;
+    rows.push(row);
+
+    let mut coefficient_idx = 0;
+    let mut has_done_initial_boundary_condtition = false;
+    let mut window_idx: usize = 0;
+
+    intervals.windows(2).for_each(|intervals_pair| {
+        let max_x_value_left = intervals_pair[0].end.x - intervals_pair[0].start.x;
+        let coefficient_idx_right = coefficient_idx + intervals_pair[0].polynomial.coefficients.len();
+        let relax_c2 = relaxed_knots.contains(&window_idx);
+
+        let mut row = CompactRow::new();
+        add_equation_factors_to_compact_row(
+            &mut row, coefficient_idx,
+            intervals_pair[0].polynomial.coefficients.len(), max_x_value_left, 0, 1.0,
+        );
+        row.rhs = intervals_pair[0].end.y;
+        rows.push(row);
+
+        if intervals_pair[0].polynomial.coefficients.len() == 5 {
+            let mut row = CompactRow::new();
+            add_equation_factors_to_compact_row(
+                &mut row, coefficient_idx,
+                intervals_pair[0].polynomial.coefficients.len(), max_x_value_left, 1, 1.0,
+            );
+            rows.push(row);
+        }
+
+        let derivative_number = 1;
+        let mut row = CompactRow::new();
+        add_equation_factors_to_compact_row(
+            &mut row, coefficient_idx,
+            intervals_pair[0].polynomial.coefficients.len(), max_x_value_left, derivative_number, 1.0,
+        );
+        add_equation_factors_to_compact_row(
+            &mut row, coefficient_idx_right,
+            intervals_pair[1].polynomial.coefficients.len(), 0.0, derivative_number, -1.0,
+        );
+        rows.push(row);
+
+        if !has_done_initial_boundary_condtition {
+            let mut row = CompactRow::new();
+            row.add_entry(coefficient_idx + 2, 2.0);
+            rows.push(row);
+            has_done_initial_boundary_condtition = true;
+        }
+
+        if !relax_c2 {
+            let derivative_number = 2;
+            let mut row = CompactRow::new();
+            add_equation_factors_to_compact_row(
+                &mut row, coefficient_idx,
+                intervals_pair[0].polynomial.coefficients.len(), max_x_value_left, derivative_number, 1.0,
+            );
+            add_equation_factors_to_compact_row(
+                &mut row, coefficient_idx_right,
+                intervals_pair[1].polynomial.coefficients.len(), 0.0, derivative_number, -1.0,
+            );
+            rows.push(row);
+        }
+
+        let mut row = CompactRow::new();
+        add_equation_factors_to_compact_row(
+            &mut row, coefficient_idx_right,
+            intervals_pair[1].polynomial.coefficients.len(), 0.0, 0, 1.0,
+        );
+        row.rhs = intervals_pair[1].start.y;
+        rows.push(row);
+
+        coefficient_idx += intervals_pair[0].polynomial.coefficients.len();
+        window_idx += 1;
+    });
+
+    let last_interval = intervals.last().expect("We should have at least one interval");
+    let max_x_value = last_interval.end.x - last_interval.start.x;
+    let mut row = CompactRow::new();
+    add_equation_factors_to_compact_row(
+        &mut row, coefficient_idx,
+        last_interval.polynomial.coefficients.len(), max_x_value, 0, 1.0,
+    );
+    row.rhs = last_interval.end.y;
+    rows.push(row);
+
+    let mut row = CompactRow::new();
+    add_equation_factors_to_compact_row(
+        &mut row, coefficient_idx,
+        last_interval.polynomial.coefficients.len(), max_x_value, 2, 1.0,
+    );
+    rows.push(row);
+
+    rows
+}
+
+pub fn get_graph_spline_interpolation_function_v5(points: &[Point]) -> Option<GraphSpline> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let points = points.to_vec();
+
+    // First pass: compute normal spline
+    let mut intervals = get_graph_spline_intervals(&points);
+    let matrix = build_compact_equation_system_v4(&intervals);
+    let solution = solve_1d_banded(&matrix);
+    apply_compact_solution_to_intervals(&solution, &mut intervals);
+
+    // Detect oscillating knots
+    let relaxed_knots = detect_oscillating_knots(&points, &GraphSpline { intervals: intervals.clone() });
+
+    if relaxed_knots.is_empty() {
+        return Some(GraphSpline { intervals });
+    }
+
+    // Rebuild intervals with reduced degrees at relaxed knots
+    for &knot_idx in &relaxed_knots {
+        if knot_idx < intervals.len() {
+            intervals[knot_idx].polynomial.coefficients.pop();
+        }
+    }
+
+    // Rebuild equation system with relaxed C2
+    let rows = build_compact_equation_system_v5(&intervals, &relaxed_knots);
+    let nb_unknowns: usize = intervals.iter().map(|i| i.polynomial.coefficients.len()).sum();
+
+    // Convert to banded matrix and solve
+    let mut bw: usize = 0;
+    for (i, row) in rows.iter().enumerate() {
+        for &(col, _) in &row.entries {
+            let d = if col >= i { col - i } else { i - col };
+            bw = bw.max(d);
+        }
+    }
+    let band_w = 2 * bw + 1;
+    let mut band = vec![0.0; nb_unknowns * band_w];
+    let mut rhs = vec![0.0; nb_unknowns];
+
+    for (i, row) in rows.iter().enumerate() {
+        for &(col, val) in &row.entries {
+            let diag = col as isize - i as isize + bw as isize;
+            band[i * band_w + diag as usize] = val;
+        }
+        rhs[i] = row.rhs;
+    }
+
+    let second_matrix = Compact1DBandMatrix { n: nb_unknowns, bw, band_width: band_w, band, rhs };
+    let solution = solve_1d_banded(&second_matrix);
+    apply_compact_solution_to_intervals(&solution, &mut intervals);
+
+    Some(GraphSpline { intervals })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1304,6 +1496,32 @@ mod tests {
     }
 
     #[test]
+    fn it_correctly_solves_the_oscillation() {
+        let points = vec![
+            Point {x: 0.0, y: 2.0},
+            Point {x: 1.0, y: 3.0},
+            Point {x: 2.0, y: 4.0},
+            Point {x: 3.0, y: 1.0},
+            Point {x: 4.0, y: 3.0},
+            Point {x: 5.0, y: 5.0},
+            Point {x: 6.0, y: 2.0}
+        ];
+
+        let solution = get_graph_spline_interpolation_function_v5(&points);
+
+        assert!(solution.is_some(), "v5 returned None");
+
+        let solution = solution.unwrap();
+
+        assert!(solution.intervals[0].polynomial.coefficients[1] > 0.0);
+        assert!(solution.intervals[1].polynomial.coefficients[1] > 0.0);
+        assert_eq!(solution.intervals[2].polynomial.coefficients[1], 0.0);
+        assert_eq!(solution.intervals[3].polynomial.coefficients[1], 0.0);
+        assert!(solution.intervals[4].polynomial.coefficients[1] > 0.0);
+        assert_eq!(solution.intervals[5].polynomial.coefficients[1], 0.0);
+    }
+
+    #[test]
     fn benchmarks() {
         for size in &[10, 100, 1000, 10000] {
             let points: Vec<Point> = (0..*size)
@@ -1330,17 +1548,23 @@ mod tests {
             let solution_v4 = get_graph_spline_interpolation_function_v4(&points);
             let elapsed_v4 = start.elapsed();
 
+            let start = std::time::Instant::now();
+            let solution_v5 = get_graph_spline_interpolation_function_v5(&points);
+            let elapsed_v5 = start.elapsed();
+
             assert_eq!(solution, solution_v2, "v1 and v2 differ for size {}", size);
             assert_eq!(solution, solution_v3, "v1 and v3 differ for size {}", size);
             assert_eq!(solution, solution_v4, "v1 and v4 differ for size {}", size);
+            assert!(solution_v5.is_some(), "v5 returned None for size {}", size);
 
             println!(
-                "size={:>6} | v1: {:>10.1?} | v2: {:>10.1?} | v3: {:>10.1?} | v4: {:>10.1?}",
+                "size={:>6} | v1: {:>10.1?} | v2: {:>10.1?} | v3: {:>10.1?} | v4: {:>10.1?} | v5: {:>10.1?}",
                 size,
                 elapsed_v1,
                 elapsed_v2,
                 elapsed_v3,
                 elapsed_v4,
+                elapsed_v5,
             );
         }
     }
