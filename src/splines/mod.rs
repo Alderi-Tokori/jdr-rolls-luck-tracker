@@ -78,7 +78,7 @@ impl PolynomialFunction for GraphSpline {
     }
 }
 
-fn get_graph_spline_intervals(points: &Vec<Point>) -> Vec<GraphSplineInterval> {
+fn get_graph_spline_intervals(points: &[Point]) -> Vec<GraphSplineInterval> {
     let mut interval_degrees_list= Vec::new();
 
     points
@@ -910,9 +910,7 @@ pub fn get_graph_spline_interpolation_function_v3(points: &[Point]) -> Option<Gr
         return None;
     }
 
-    let points = points.to_vec();
-
-    let mut intervals = get_graph_spline_intervals(&points);
+    let mut intervals = get_graph_spline_intervals(points);
     let rows = build_compact_equation_system(&intervals);
 
     let solution = solve_banded_equation_system(&rows);
@@ -1677,9 +1675,7 @@ pub fn get_graph_spline_interpolation_function_v4(points: &[Point]) -> Option<Gr
         return None;
     }
 
-    let points = points.to_vec();
-
-    let mut intervals = get_graph_spline_intervals(&points);
+    let mut intervals = get_graph_spline_intervals(points);
     let matrix = build_compact_equation_system_v4(&intervals);
 
     let solution = solve_1d_banded(&matrix);
@@ -1694,9 +1690,7 @@ pub fn get_graph_spline_interpolation_function_v5(points: &[Point]) -> Option<Gr
         return None;
     }
 
-    let points = points.to_vec();
-
-    let mut intervals = get_graph_spline_intervals(&points);
+    let mut intervals = get_graph_spline_intervals(points);
     let matrix = build_compact_equation_system_v5(&intervals);
 
     let solution = solve_1d_banded_v5(&matrix);
@@ -1711,9 +1705,7 @@ pub fn get_graph_spline_interpolation_function_v6(points: &[Point]) -> Option<Gr
         return None;
     }
 
-    let points = points.to_vec();
-
-    let mut intervals = get_graph_spline_intervals(&points);
+    let mut intervals = get_graph_spline_intervals(points);
     let matrix = build_compact_equation_system_v6(&intervals);
 
     let solution = solve_1d_banded_v5(&matrix);
@@ -1728,9 +1720,7 @@ pub fn get_graph_spline_interpolation_function_v7(points: &[Point]) -> Option<Gr
         return None;
     }
 
-    let points = points.to_vec();
-
-    let mut intervals = get_graph_spline_intervals(&points);
+    let mut intervals = get_graph_spline_intervals(points);
     let matrix = build_compact_equation_system_v6(&intervals);
 
     let solution = solve_1d_banded_v7(matrix);
@@ -1745,9 +1735,7 @@ pub fn get_graph_spline_interpolation_function_v8(points: &[Point]) -> Option<Gr
         return None;
     }
 
-    let points = points.to_vec();
-
-    let mut intervals = get_graph_spline_intervals(&points);
+    let mut intervals = get_graph_spline_intervals(points);
     let matrix = build_compact_equation_system_v8(&intervals);
 
     let solution = solve_1d_banded_v7(matrix);
@@ -1762,9 +1750,7 @@ pub fn get_graph_spline_interpolation_function_v9(points: &[Point]) -> Option<Gr
         return None;
     }
 
-    let points = points.to_vec();
-
-    let mut intervals = get_graph_spline_intervals(&points);
+    let mut intervals = get_graph_spline_intervals(points);
     let matrix = build_compact_equation_system_v9(&intervals);
 
     let solution = solve_1d_banded_v7(matrix);
@@ -1779,9 +1765,7 @@ pub fn get_graph_spline_interpolation_function_v10(points: &[Point]) -> Option<G
         return None;
     }
 
-    let points = points.to_vec();
-
-    let mut intervals = get_graph_spline_intervals(&points);
+    let mut intervals = get_graph_spline_intervals(points);
     let matrix = build_compact_equation_system_v9(&intervals);
 
     let solution = solve_1d_banded_v10(matrix);
