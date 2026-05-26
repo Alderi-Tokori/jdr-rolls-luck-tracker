@@ -54,7 +54,7 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
         }
 
         let data: Vec<splines::Point> = data_iced.iter().map(|p| p.into()).collect();
-        let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function_v4(&data) {
+        let graph_spline_polynomial = match splines::get_graph_spline_interpolation_function_v10(&data) {
             Some(p) => p,
             None => return vec![frame.into_geometry()]
         };
@@ -94,7 +94,7 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
 
                     builder.line_to(Point::new(
                         map_x(graph_w, min_x, x_range, x as f32),
-                        map_y(graph_h, min_y, y_range, graph_spline_polynomial.eval(x).unwrap_or(0.0) as f32)
+                        map_y(graph_h, min_y, y_range, interval.eval(x).unwrap_or(0.0) as f32)
                     ))
                 }
             }
