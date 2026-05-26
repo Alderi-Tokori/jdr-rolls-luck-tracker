@@ -87,10 +87,10 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
             ));
 
             for interval in & graph_spline_polynomial.intervals {
-                let segment_step = (interval.end.x - interval.start.x) / (self.number_of_segments as f64);
+                let segment_step = (interval.end.x - interval.start.x) / (self.number_of_segments as f32);
 
                 for segment_idx in 1..=self.number_of_segments {
-                    let x = interval.start.x + (segment_idx as f64) * segment_step;
+                    let x = interval.start.x + (segment_idx as f32) * segment_step;
 
                     builder.line_to(Point::new(
                         map_x(graph_w, min_x, x_range, x as f32),

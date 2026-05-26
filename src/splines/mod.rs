@@ -4,30 +4,30 @@ use std::cmp::min;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Point {
-    pub x: f64,
-    pub y: f64,
+    pub x: f32,
+    pub y: f32,
 }
 
 impl From<&iced::Point> for Point {
     fn from(item: &iced::Point) -> Self {
         Point {
-            x: item.x as f64,
-            y: item.y as f64
+            x: item.x,
+            y: item.y,
         }
     }
 }
 
 pub trait PolynomialFunction {
-    fn eval(&self, x: f64) -> Option<f64>;
+    fn eval(&self, x: f32) -> Option<f32>;
 }
 
 #[derive(Debug, PartialEq, Clone)]
 struct Polynomial {
-    coefficients: Vec<f64>,
+    coefficients: Vec<f32>,
 }
 
 impl PolynomialFunction for Polynomial {
-    fn eval(&self, x: f64) -> Option<f64> {
+    fn eval(&self, x: f32) -> Option<f32> {
         if self.coefficients.is_empty() {
             return None;
         }
@@ -47,7 +47,7 @@ pub struct GraphSplineInterval {
 }
 
 impl PolynomialFunction for GraphSplineInterval {
-    fn eval(&self, x: f64) -> Option<f64> {
+    fn eval(&self, x: f32) -> Option<f32> {
         self.polynomial.eval(x - self.start.x)
     }
 }
@@ -58,7 +58,7 @@ pub struct GraphSpline {
 }
 
 impl PolynomialFunction for GraphSpline {
-    fn eval(&self, x: f64) -> Option<f64> {
+    fn eval(&self, x: f32) -> Option<f32> {
         if self.intervals.is_empty() {
             return None;
         }
@@ -119,8 +119,8 @@ fn get_graph_spline_intervals(points: &[Point]) -> Vec<GraphSplineInterval> {
 
 #[derive(Debug, Clone)]
 struct CompactRow {
-    entries: Vec<(usize, f64)>,
-    rhs: f64,
+    entries: Vec<(usize, f32)>,
+    rhs: f32,
 }
 
 impl CompactRow {
@@ -131,7 +131,7 @@ impl CompactRow {
         }
     }
 
-    fn add_entry(&mut self, col: usize, value: f64) {
+    fn add_entry(&mut self, col: usize, value: f32) {
         match self.entries.binary_search_by_key(&col, |(c, _)| *c) {
             Ok(idx) => self.entries[idx].1 += value,
             Err(idx) => self.entries.insert(idx, (col, value)),
@@ -141,8 +141,8 @@ impl CompactRow {
 
 #[derive(Debug, Clone)]
 struct CompactRowV2 {
-    entries: Vec<(usize, f64)>,
-    rhs: f64,
+    entries: Vec<(usize, f32)>,
+    rhs: f32,
 }
 
 impl CompactRowV2 {
@@ -153,7 +153,7 @@ impl CompactRowV2 {
         }
     }
 
-    fn add_entry(&mut self, col: usize, value: f64) {
+    fn add_entry(&mut self, col: usize, value: f32) {
         if let Some((last_col, last_val)) = self.entries.last_mut() {
             if *last_col == col {
                 *last_val += value;
@@ -168,15 +168,15 @@ fn add_equation_factors_to_compact_row(
     row: &mut CompactRow,
     coefficient_idx: usize,
     nb_coefficients: usize,
-    x_value: f64,
+    x_value: f32,
     derivative: usize,
-    sign: f64,
+    sign: f32,
 ) {
     let mut cur_x_value = 1.0;
     for i in derivative..nb_coefficients {
         let mut derivative_coeff = 1.0;
         for j in 0..derivative {
-            derivative_coeff = derivative_coeff * ((i - j) as f64);
+            derivative_coeff = derivative_coeff * ((i - j) as f32);
         }
 
         row.add_entry(coefficient_idx + i, derivative_coeff * cur_x_value * sign);
@@ -318,9 +318,9 @@ fn build_compact_equation_system(intervals: &Vec<GraphSplineInterval>) -> Vec<Co
 const MAX_ENTRIES_PER_ROW: usize = 10;
 
 struct StackRow {
-    entries: [(usize, f64); MAX_ENTRIES_PER_ROW],
+    entries: [(usize, f32); MAX_ENTRIES_PER_ROW],
     len: usize,
-    rhs: f64,
+    rhs: f32,
 }
 
 impl StackRow {
@@ -332,17 +332,17 @@ impl StackRow {
         }
     }
 
-    fn clear(&mut self, rhs: f64) {
+    fn clear(&mut self, rhs: f32) {
         self.len = 0;
         self.rhs = rhs;
     }
 
-    fn add_entry(&mut self, col: usize, value: f64) {
+    fn add_entry(&mut self, col: usize, value: f32) {
         self.entries[self.len] = (col, value);
         self.len += 1;
     }
 
-    fn as_slice(&self) -> &[(usize, f64)] {
+    fn as_slice(&self) -> &[(usize, f32)] {
         &self.entries[..self.len]
     }
 }
@@ -351,15 +351,15 @@ fn add_equation_factors_to_stack_row(
     row: &mut StackRow,
     coefficient_idx: usize,
     nb_coefficients: usize,
-    x_value: f64,
+    x_value: f32,
     derivative: usize,
-    sign: f64,
+    sign: f32,
 ) {
     let mut cur_x_value = 1.0;
     for i in derivative..nb_coefficients {
         let mut derivative_coeff = 1.0;
         for j in 0..derivative {
-            derivative_coeff = derivative_coeff * ((i - j) as f64);
+            derivative_coeff = derivative_coeff * ((i - j) as f32);
         }
 
         row.add_entry(coefficient_idx + i, derivative_coeff * cur_x_value * sign);
@@ -367,7 +367,7 @@ fn add_equation_factors_to_stack_row(
     }
 }
 
-const FALLING_FACTORIAL: [[f64; 3]; 6] = [
+const FALLING_FACTORIAL: [[f32; 3]; 6] = [
     [1.0, 0.0, 0.0],
     [1.0, 1.0, 0.0],
     [1.0, 2.0, 2.0],
@@ -380,9 +380,9 @@ fn add_equation_factors_to_stack_row_v2(
     row: &mut StackRow,
     coefficient_idx: usize,
     nb_coefficients: usize,
-    x_value: f64,
+    x_value: f32,
     derivative: usize,
-    sign: f64,
+    sign: f32,
 ) {
     let ff = &FALLING_FACTORIAL;
     let mut cur_x_value = 1.0;
@@ -591,15 +591,15 @@ fn add_equation_factors_to_compact_row_v2(
     row: &mut CompactRowV2,
     coefficient_idx: usize,
     nb_coefficients: usize,
-    x_value: f64,
+    x_value: f32,
     derivative: usize,
-    sign: f64,
+    sign: f32,
 ) {
     let mut cur_x_value = 1.0;
     for i in derivative..nb_coefficients {
         let mut derivative_coeff = 1.0;
         for j in 0..derivative {
-            derivative_coeff = derivative_coeff * ((i - j) as f64);
+            derivative_coeff = derivative_coeff * ((i - j) as f32);
         }
 
         row.add_entry(coefficient_idx + i, derivative_coeff * cur_x_value * sign);
@@ -738,7 +738,7 @@ fn build_compact_equation_system_v2(intervals: &Vec<GraphSplineInterval>) -> Vec
     rows
 }
 
-fn apply_compact_solution_to_intervals(solution: &[f64], intervals: &mut Vec<GraphSplineInterval>) {
+fn apply_compact_solution_to_intervals(solution: &[f32], intervals: &mut Vec<GraphSplineInterval>) {
     let mut cur_offset = 0;
 
     for cur_interval in intervals {
@@ -752,7 +752,7 @@ fn apply_compact_solution_to_intervals(solution: &[f64], intervals: &mut Vec<Gra
     }
 }
 
-fn solve_banded_equation_system(rows: &[CompactRow]) -> Vec<f64> {
+fn solve_banded_equation_system(rows: &[CompactRow]) -> Vec<f32> {
     let n = rows.len();
 
     let mut bw: usize = 0;
@@ -919,8 +919,8 @@ struct Compact1DBandMatrix {
     n: usize,
     bw: usize,
     band_width: usize,
-    band: Vec<f64>,
-    rhs: Vec<f64>,
+    band: Vec<f32>,
+    rhs: Vec<f32>,
 }
 
 fn build_compact_equation_system_v4(intervals: &Vec<GraphSplineInterval>) -> Compact1DBandMatrix {
@@ -1127,7 +1127,7 @@ fn build_compact_equation_system_v8(intervals: &Vec<GraphSplineInterval>) -> Com
     Compact1DBandMatrix { n, bw, band_width, band, rhs }
 }
 
-fn solve_1d_banded(mat: &Compact1DBandMatrix) -> Vec<f64> {
+fn solve_1d_banded(mat: &Compact1DBandMatrix) -> Vec<f32> {
     let n = mat.n;
     let bw = mat.bw;
     let band_w = mat.band_width;
@@ -1263,7 +1263,7 @@ fn solve_1d_banded(mat: &Compact1DBandMatrix) -> Vec<f64> {
     (0..n).map(|pos| rhs[indexed[pos].0]).collect()
 }
 
-fn solve_1d_banded_v5(mat: &Compact1DBandMatrix) -> Vec<f64> {
+fn solve_1d_banded_v5(mat: &Compact1DBandMatrix) -> Vec<f32> {
     let n = mat.n;
     let bw = mat.bw;
     let band_w = mat.band_width;
@@ -1398,7 +1398,7 @@ fn solve_1d_banded_v5(mat: &Compact1DBandMatrix) -> Vec<f64> {
     (0..n).map(|pos| rhs[indexed[pos].0]).collect()
 }
 
-fn solve_1d_banded_v7(mat: Compact1DBandMatrix) -> Vec<f64> {
+fn solve_1d_banded_v7(mat: Compact1DBandMatrix) -> Vec<f32> {
     let n = mat.n;
     let bw = mat.bw;
     let band_w = mat.band_width;
@@ -1531,7 +1531,7 @@ fn solve_1d_banded_v7(mat: Compact1DBandMatrix) -> Vec<f64> {
     (0..n).map(|pos| rhs[indexed[pos].0]).collect()
 }
 
-fn solve_1d_banded_v10(mat: Compact1DBandMatrix) -> Vec<f64> {
+fn solve_1d_banded_v10(mat: Compact1DBandMatrix) -> Vec<f32> {
     let n = mat.n;
     let bw = mat.bw;
     let band_w = mat.band_width;
@@ -1664,7 +1664,7 @@ fn solve_1d_banded_v10(mat: Compact1DBandMatrix) -> Vec<f64> {
     (0..n).map(|pos| rhs[indexed[pos].0]).collect()
 }
 
-fn solve_1d_banded_v11(mat: Compact1DBandMatrix) -> Vec<f64> {
+fn solve_1d_banded_v11(mat: Compact1DBandMatrix) -> Vec<f32> {
     let n = mat.n;
     let bw = mat.bw;
     let band_w = mat.band_width;
@@ -2038,32 +2038,32 @@ mod tests {
                     GraphSplineInterval {
                         start: Point {x: 0.0, y: 2.0},
                         end: Point {x: 1.0, y: 3.0},
-                        polynomial: Polynomial {coefficients: vec![2.0, 2.3000000000000003, 0.0, -1.3000000000000003]}
+                        polynomial: Polynomial {coefficients: vec![2.0, 2.3000007, 0.0, -1.3000007]}
                     },
                     GraphSplineInterval {
                         start: Point {x: 1.0, y: 3.0},
                         end: Point {x: 2.0, y: 4.0},
-                        polynomial: Polynomial {coefficients: vec![3.0, -1.6000000000000008, -3.9000000000000012, 16.6, -10.1]}
+                        polynomial: Polynomial {coefficients: vec![3.0, -1.6000013, -3.900002, 16.600008, -10.100004]}
                     },
                     GraphSplineInterval {
                         start: Point {x: 2.0, y: 4.0},
                         end: Point {x: 3.0, y: 1.0},
-                        polynomial: Polynomial {coefficients: vec![4.0, 0.0, -14.7, 17.4, -5.7]}
+                        polynomial: Polynomial {coefficients: vec![4.0, -0.0, -14.7, 17.4, -5.7]}
                     },
                     GraphSplineInterval {
                         start: Point {x: 3.0, y: 1.0},
                         end: Point {x: 4.0, y: 3.0},
-                        polynomial: Polynomial {coefficients: vec![1.0, 0.0, 3.3, -1.2999999999999998]}
+                        polynomial: Polynomial {coefficients: vec![1.0, -0.0, 3.3, -1.3]}
                     },
                     GraphSplineInterval {
                         start: Point {x: 4.0, y: 3.0},
                         end: Point {x: 5.0, y: 5.0},
-                        polynomial: Polynomial {coefficients: vec![3.0, 2.7, -0.5999999999999998, 1.0999999999999996, -1.2]}
+                        polynomial: Polynomial {coefficients: vec![3.0, 2.7, -0.59999996, 1.1, -1.2]}
                     },
                     GraphSplineInterval {
                         start: Point {x: 5.0, y: 5.0},
                         end: Point {x: 6.0, y: 2.0},
-                        polynomial: Polynomial {coefficients: vec![5.0, 0.0, -4.5, 1.5]}
+                        polynomial: Polynomial {coefficients: vec![5.0, -0.0, -4.5, 1.5]}
                     },
                 ]
             }
@@ -2107,8 +2107,8 @@ mod tests {
         for size in &[10, 100, 1000, 10000, 100000] {
             let points: Vec<Point> = (0..*size)
                 .map(|i| {
-                    let x = i as f64 * 0.5;
-                    let y = (x * 0.3).sin() * 100.0 + i as f64 % 7.0 * 3.0;
+                    let x = i as f32 * 0.5;
+                    let y = (x * 0.3).sin() * 100.0 + i as f32 % 7.0 * 3.0;
                     Point { x, y }
                 })
                 .collect();
@@ -2179,18 +2179,18 @@ mod tests {
         for size in &[10, 100, 1000, 10000] {
             let points: Vec<Point> = (0..*size)
                 .map(|i| {
-                    let x = i as f64 * 0.5;
-                    let y = (x * 0.3).sin() * 100.0 + i as f64 % 7.0 * 3.0;
+                    let x = i as f32 * 0.5;
+                    let y = (x * 0.3).sin() * 100.0 + i as f32 % 7.0 * 3.0;
                     Point { x, y }
                 })
                 .collect();
 
             let solution = get_graph_spline_interpolation_function_v4(&points).unwrap();
 
-            let eval_xs: Vec<f64> = solution.intervals.iter()
+            let eval_xs: Vec<f32> = solution.intervals.iter()
                 .flat_map(|interval| {
                     let step = (interval.end.x - interval.start.x) / 100.0;
-                    (1..=100).map(move |seg| interval.start.x + seg as f64 * step)
+                    (1..=100).map(move |seg| interval.start.x + seg as f32 * step)
                 })
                 .collect();
 
