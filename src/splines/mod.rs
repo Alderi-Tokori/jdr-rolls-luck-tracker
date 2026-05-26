@@ -1740,25 +1740,22 @@ mod tests {
             let solution_v5 = get_graph_spline_interpolation_function_v5(&points);
             let elapsed_v5 = start.elapsed();
 
-            assert_eq!(solution_v3, solution_v4, "v3 and v4 differ for size {}", size);
-            assert_eq!(solution_v3, solution_v5, "v3 and v5 differ for size {}", size);
-
             let start = std::time::Instant::now();
             let solution_v6 = get_graph_spline_interpolation_function_v6(&points);
             let elapsed_v6 = start.elapsed();
-
-            assert_eq!(solution_v3, solution_v6, "v3 and v6 differ for size {}", size);
 
             let start = std::time::Instant::now();
             let solution_v7 = get_graph_spline_interpolation_function_v7(&points);
             let elapsed_v7 = start.elapsed();
 
-            assert_eq!(solution_v3, solution_v7, "v3 and v7 differ for size {}", size);
-
             let start = std::time::Instant::now();
             let solution_v8 = get_graph_spline_interpolation_function_v8(&points);
             let elapsed_v8 = start.elapsed();
 
+            assert_eq!(solution_v3, solution_v4, "v3 and v4 differ for size {}", size);
+            assert_eq!(solution_v3, solution_v5, "v3 and v5 differ for size {}", size);
+            assert_eq!(solution_v3, solution_v6, "v3 and v6 differ for size {}", size);
+            assert_eq!(solution_v3, solution_v7, "v3 and v7 differ for size {}", size);
             assert_eq!(solution_v3, solution_v8, "v3 and v8 differ for size {}", size);
 
             println!(
