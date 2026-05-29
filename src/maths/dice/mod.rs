@@ -479,6 +479,7 @@ mod tests {
     use crate::maths::dice::KeepingResultModifier::KeepLowest;
     use crate::maths::dice::RerollModifier::RerollIfLower;
     use crate::maths::dice::RerollModifier::RerollIfGreater;
+    use crate::maths::dice::RerollModifier::RerollIfEqual;
     use super::*;
 
     #[test]
@@ -1186,6 +1187,139 @@ mod tests {
             number_of_dice: 5, dice_size: 6,
             reroll_modifier: Some(RerollIfGreater {dice_to_reroll: 2, number: 3}),
             clamping_modifier: None, keeping_result_modifier: Some(KeepLowest {number_of_dice: 3})
+        });
+        assert_eq!(result.min_value, bf.min_value);
+        assert_eq!(result.probabilities.len(), bf.probabilities.len());
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - bf.probabilities[i]).abs() < 1e-6,
+                "value {}: bf {}, result {}", result.min_value + i as u32, bf.probabilities[i], result.probabilities[i]);
+        }
+    }
+
+    #[test]
+    fn it_correctly_computes_reroll_equal_keep_all() {
+        // 5d6r2={2,5}: reroll up to 2 if equal to 2 or 5, keep all 5
+        let mut bf = Distribution { probabilities: vec![0.0; 26], min_value: 5u32 };
+        for a in 1u32..=6 { for b in 1u32..=6 { for c in 1u32..=6 { for d in 1u32..=6 { for e in 1u32..=6 {
+            let mut sorted = vec![a, b, c, d, e]; sorted.sort();
+            let bad_count = sorted.iter().filter(|&&x| x == 2 || x == 5).count();
+            let reroll_count = 2.min(bad_count);
+            let kept_count = bad_count - reroll_count;
+            let good_vals: Vec<u32> = sorted.iter().filter(|&&x| x != 2 && x != 5).copied().collect();
+            let bad_vals: Vec<u32> = sorted.iter().filter(|&&x| x == 2 || x == 5).copied().collect();
+            if bad_count == 0 {
+                let sum: u32 = good_vals.iter().sum();
+                bf.probabilities[(sum - bf.min_value) as usize] += 1.0;
+            } else if bad_count == 1 {
+                for r1 in 1u32..=6 {
+                    let kept_bad: Vec<u32> = bad_vals.iter().rev().take(kept_count).copied().collect();
+                    let sum: u32 = kept_bad.iter().sum::<u32>() + good_vals.iter().sum::<u32>() + r1;
+                    bf.probabilities[(sum - bf.min_value) as usize] += 1.0 / 6.0;
+                }
+            } else {
+                for r1 in 1u32..=6 { for r2 in 1u32..=6 {
+                    let kept_bad: Vec<u32> = bad_vals.iter().rev().take(kept_count).copied().collect();
+                    let sum: u32 = kept_bad.iter().sum::<u32>() + good_vals.iter().sum::<u32>() + r1 + r2;
+                    bf.probabilities[(sum - bf.min_value) as usize] += 1.0 / 36.0;
+                }}
+            }
+        }}}}}
+        let total: f64 = bf.probabilities.iter().sum();
+        for p in &mut bf.probabilities { *p /= total; }
+        let result = get_dice_roll_distribution(&DiceRoll {
+            number_of_dice: 5, dice_size: 6,
+            reroll_modifier: Some(RerollIfEqual {dice_to_reroll: 2, numbers: vec![2, 5]}),
+            clamping_modifier: None, keeping_result_modifier: None,
+        });
+        assert_eq!(result.min_value, bf.min_value);
+        assert_eq!(result.probabilities.len(), bf.probabilities.len());
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - bf.probabilities[i]).abs() < 1e-6,
+                "value {}: bf {}, result {}", result.min_value + i as u32, bf.probabilities[i], result.probabilities[i]);
+        }
+    }
+
+    #[test]
+    fn it_correctly_computes_reroll_equal_keep_highest_3() {
+        // 5d6r2={2,5}kh3
+        let mut bf = Distribution { probabilities: vec![0.0; 16], min_value: 3u32 };
+        for a in 1u32..=6 { for b in 1u32..=6 { for c in 1u32..=6 { for d in 1u32..=6 { for e in 1u32..=6 {
+            let mut sorted = vec![a, b, c, d, e]; sorted.sort();
+            let bad_count = sorted.iter().filter(|&&x| x == 2 || x == 5).count();
+            let reroll_count = 2.min(bad_count);
+            let kept_count = bad_count - reroll_count;
+            let good_vals: Vec<u32> = sorted.iter().filter(|&&x| x != 2 && x != 5).copied().collect();
+            let bad_vals: Vec<u32> = sorted.iter().filter(|&&x| x == 2 || x == 5).copied().collect();
+            if bad_count == 0 {
+                let mut all = good_vals; all.sort_unstable_by(|x, y| y.cmp(x));
+                bf.probabilities[(all[0] + all[1] + all[2] - bf.min_value) as usize] += 1.0;
+            } else if bad_count == 1 {
+                for r1 in 1u32..=6 {
+                    let kept_bad: Vec<u32> = bad_vals.iter().rev().take(kept_count).copied().collect();
+                    let mut final_vals: Vec<u32> = vec![r1]; final_vals.extend(&kept_bad); final_vals.extend(&good_vals);
+                    final_vals.sort_unstable_by(|x, y| y.cmp(x));
+                    bf.probabilities[(final_vals[0] + final_vals[1] + final_vals[2] - bf.min_value) as usize] += 1.0 / 6.0;
+                }
+            } else {
+                for r1 in 1u32..=6 { for r2 in 1u32..=6 {
+                    let kept_bad: Vec<u32> = bad_vals.iter().rev().take(kept_count).copied().collect();
+                    let mut final_vals: Vec<u32> = vec![r1, r2]; final_vals.extend(&kept_bad); final_vals.extend(&good_vals);
+                    final_vals.sort_unstable_by(|x, y| y.cmp(x));
+                    bf.probabilities[(final_vals[0] + final_vals[1] + final_vals[2] - bf.min_value) as usize] += 1.0 / 36.0;
+                }}
+            }
+        }}}}}
+        let total: f64 = bf.probabilities.iter().sum();
+        for p in &mut bf.probabilities { *p /= total; }
+        let result = get_dice_roll_distribution(&DiceRoll {
+            number_of_dice: 5, dice_size: 6,
+            reroll_modifier: Some(RerollIfEqual {dice_to_reroll: 2, numbers: vec![2, 5]}),
+            clamping_modifier: None, keeping_result_modifier: Some(KeepHighest {number_of_dice: 3}),
+        });
+        assert_eq!(result.min_value, bf.min_value);
+        assert_eq!(result.probabilities.len(), bf.probabilities.len());
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - bf.probabilities[i]).abs() < 1e-6,
+                "value {}: bf {}, result {}", result.min_value + i as u32, bf.probabilities[i], result.probabilities[i]);
+        }
+    }
+
+    #[test]
+    fn it_correctly_computes_reroll_equal_keep_lowest_3() {
+        // 5d6r2={2,5}kl3
+        let mut bf = Distribution { probabilities: vec![0.0; 16], min_value: 3u32 };
+        for a in 1u32..=6 { for b in 1u32..=6 { for c in 1u32..=6 { for d in 1u32..=6 { for e in 1u32..=6 {
+            let mut sorted = vec![a, b, c, d, e]; sorted.sort();
+            let bad_count = sorted.iter().filter(|&&x| x == 2 || x == 5).count();
+            let reroll_count = 2.min(bad_count);
+            let kept_count = bad_count - reroll_count;
+            let good_vals: Vec<u32> = sorted.iter().filter(|&&x| x != 2 && x != 5).copied().collect();
+            let bad_vals: Vec<u32> = sorted.iter().filter(|&&x| x == 2 || x == 5).copied().collect();
+            if bad_count == 0 {
+                let mut all = good_vals; all.sort();
+                bf.probabilities[(all[0] + all[1] + all[2] - bf.min_value) as usize] += 1.0;
+            } else if bad_count == 1 {
+                for r1 in 1u32..=6 {
+                    let kept_bad: Vec<u32> = bad_vals.iter().rev().take(kept_count).copied().collect();
+                    let mut final_vals: Vec<u32> = vec![r1]; final_vals.extend(&kept_bad); final_vals.extend(&good_vals);
+                    final_vals.sort();
+                    bf.probabilities[(final_vals[0] + final_vals[1] + final_vals[2] - bf.min_value) as usize] += 1.0 / 6.0;
+                }
+            } else {
+                for r1 in 1u32..=6 { for r2 in 1u32..=6 {
+                    let kept_bad: Vec<u32> = bad_vals.iter().rev().take(kept_count).copied().collect();
+                    let mut final_vals: Vec<u32> = vec![r1, r2]; final_vals.extend(&kept_bad); final_vals.extend(&good_vals);
+                    final_vals.sort();
+                    bf.probabilities[(final_vals[0] + final_vals[1] + final_vals[2] - bf.min_value) as usize] += 1.0 / 36.0;
+                }}
+            }
+        }}}}}
+        let total: f64 = bf.probabilities.iter().sum();
+        for p in &mut bf.probabilities { *p /= total; }
+        let result = get_dice_roll_distribution(&DiceRoll {
+            number_of_dice: 5, dice_size: 6,
+            reroll_modifier: Some(RerollIfEqual {dice_to_reroll: 2, numbers: vec![2, 5]}),
+            clamping_modifier: None, keeping_result_modifier: Some(KeepLowest {number_of_dice: 3}),
         });
         assert_eq!(result.min_value, bf.min_value);
         assert_eq!(result.probabilities.len(), bf.probabilities.len());
