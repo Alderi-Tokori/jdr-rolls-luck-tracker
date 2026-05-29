@@ -196,12 +196,12 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
         min_value: 1
     };
 
-        if let Some(modifier) = & roll.reroll_modifier {
-            let (dice_to_reroll, bad_rolls) = match modifier {
-                RerollModifier::RerollIfLower {dice_to_reroll, number} => (*dice_to_reroll, &(1..*number).collect()),
-                RerollModifier::RerollIfGreater {dice_to_reroll, number} => (*dice_to_reroll, &(number+1..=roll.dice_size).collect()),
-                RerollModifier::RerollIfEqual {dice_to_reroll, numbers} => (*dice_to_reroll, numbers)
-            };
+    if let Some(modifier) = & roll.reroll_modifier {
+        let (dice_to_reroll, bad_rolls) = match modifier {
+            RerollModifier::RerollIfLower {dice_to_reroll, number} => (*dice_to_reroll, &(1..*number).collect()),
+            RerollModifier::RerollIfGreater {dice_to_reroll, number} => (*dice_to_reroll, &(number+1..=roll.dice_size).collect()),
+            RerollModifier::RerollIfEqual {dice_to_reroll, numbers} => (*dice_to_reroll, numbers)
+        };
 
         let probability_of_bad_dice = bad_rolls.len() as f32 / roll.dice_size as f32;
         let probability_of_good_dice = 1.0 - probability_of_bad_dice;
