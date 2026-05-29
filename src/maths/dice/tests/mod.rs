@@ -1193,12 +1193,13 @@ fn it_correctly_computes_sum_of_lowest_2_and_max_15() {
 
 #[test]
 fn benchmark() {
-    let number_of_dice = 1;
+    let number_of_dice = 3;
     let dice_size = 20;
-    let number_to_keep = 0;
-    let dice_to_reroll = 1;
-    let number_for_reroll = 2;
+    let number_to_keep = 1;
+    let dice_to_reroll = 2;
+    let numbers_for_reroll = vec![4, 5, 6, 14, 15, 16];
     let minimum = 0;
+    let maximum = 19;
 
     let mut dice_roll = DiceRoll {
         number_of_dice,
@@ -1209,9 +1210,9 @@ fn benchmark() {
     };
 
     if dice_to_reroll > 0 {
-        dice_roll.reroll_modifier = Some(RerollIfLower {
+        dice_roll.reroll_modifier = Some(RerollIfEqual {
             dice_to_reroll,
-            number: number_for_reroll
+            numbers: numbers_for_reroll.clone()
         });
     }
 
@@ -1225,6 +1226,10 @@ fn benchmark() {
         dice_roll.clamping_modifier = Some(Minimum {
             number: minimum
         })
+    } else if maximum < dice_size {
+        dice_roll.clamping_modifier = Some(Maximum {
+            number: maximum
+        })
     }
 
     let start = std::time::Instant::now();
@@ -1234,12 +1239,12 @@ fn benchmark() {
     dbg!(& d);
 
     println!(
-        "{}d{}kh{}r{}<{}min{} | eval: {:>10.1?}",
+        "{}d{}kh{}r{}={{{}}}min{} | eval: {:>10.1?}",
         number_of_dice,
         dice_size,
         number_to_keep,
         dice_to_reroll,
-        number_for_reroll,
+        numbers_for_reroll.iter().map(|x| x.to_string() + ",").collect::<String>(),
         minimum,
         elapsed,
     );
