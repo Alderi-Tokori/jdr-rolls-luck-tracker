@@ -105,45 +105,45 @@ impl Distribution {
         let number_of_kept_dice_usize = number_of_kept_dice as usize;
 
         // Base: only the smallest face — all dice land on it
-        let mut prev = vec![vec![Distribution::constant(0); number_of_kept_dice_usize + 1]; number_of_dice_usize + 1];
+        let mut state_below_face = vec![vec![Distribution::constant(0); number_of_kept_dice_usize + 1]; number_of_dice_usize + 1];
         let v0 = self.min_value;
         for cur_number_of_dice in 0..=number_of_dice_usize {
             for cur_number_of_kept_dice in 0..=cur_number_of_dice.min(number_of_kept_dice_usize) {
-                prev[cur_number_of_dice][cur_number_of_kept_dice] = Distribution::constant(cur_number_of_kept_dice as u32 * v0);
+                state_below_face[cur_number_of_dice][cur_number_of_kept_dice] = Distribution::constant(cur_number_of_kept_dice as u32 * v0);
             }
         }
 
-        let mut prob_lower = self.probabilities[0]; // cumulative probability of faces already in `prev`
+        let mut prob_lower = self.probabilities[0]; // cumulative probability of faces in state_below_face
         for idx in 1..self.probabilities.len() {
-            let v = self.min_value + idx as u32;
-            let p = self.probabilities[idx];
+            let cur_face_value = self.min_value + idx as u32;
+            let cur_face_prob = self.probabilities[idx];
 
-            let total = prob_lower + p; // P(lower than this face)
-            let mut curr = vec![vec![Distribution::constant(0); number_of_kept_dice_usize + 1]; number_of_dice_usize + 1];
+            let prob_total = prob_lower + cur_face_prob;  // P(lower than or equal to this face)
+            let mut state_up_to_face = vec![vec![Distribution::constant(0); number_of_kept_dice_usize + 1]; number_of_dice_usize + 1];
             for cur_number_of_dice in 0..=number_of_dice_usize {
                 for cur_number_of_kept_dice in 0..=cur_number_of_dice.min(number_of_kept_dice_usize) {
-                    let mut dist: Option<Distribution> = None;
-                    for c in 0..=cur_number_of_dice {
-                        let kept = c.min(cur_number_of_kept_dice);
-                        let prob_c = get_combinations(cur_number_of_dice as u32, c as u32) as f64
-                            * (p / total).powi(c as i32)
-                            * (prob_lower / total).powi((cur_number_of_dice - c) as i32);
-                        let mut sub = prev[cur_number_of_dice - c][cur_number_of_kept_dice - kept].clone();
-                        sub.shift_by(kept as u32 * v);
-                        sub.scale(prob_c);
-                        match dist.as_mut() {
-                            None => dist = Some(sub),
-                            Some(d) => d.merge(&sub),
+                    let mut cell_distribution: Option<Distribution> = None;
+                    for cur_number_of_dice_landing_on_face in 0..=cur_number_of_dice {
+                        let kept = cur_number_of_dice_landing_on_face.min(cur_number_of_kept_dice);
+                        let prob_dice_landing_on_face = get_combinations(cur_number_of_dice as u32, cur_number_of_dice_landing_on_face as u32) as f64
+                            * (cur_face_prob / prob_total).powi(cur_number_of_dice_landing_on_face as i32)
+                            * (prob_lower / prob_total).powi((cur_number_of_dice - cur_number_of_dice_landing_on_face) as i32);
+                        let mut branch_distribution = state_below_face[cur_number_of_dice - cur_number_of_dice_landing_on_face][cur_number_of_kept_dice - kept].clone();
+                        branch_distribution.shift_by(kept as u32 * cur_face_value);
+                        branch_distribution.scale(prob_dice_landing_on_face);
+                        match cell_distribution.as_mut() {
+                            None => cell_distribution = Some(branch_distribution),
+                            Some(d) => d.merge(&branch_distribution),
                         }
                     }
-                    curr[cur_number_of_dice][cur_number_of_kept_dice] = dist.expect("at least one c in 0..=cur_number_of_dice");
+                    state_up_to_face[cur_number_of_dice][cur_number_of_kept_dice] = cell_distribution.expect("at least one dice_on_face in 0..=cur_number_of_dice");
                 }
             }
-            prob_lower = total;
-            prev = curr;
+            prob_lower = prob_total;
+            state_below_face = state_up_to_face;
         }
 
-        prev[number_of_dice_usize][number_of_kept_dice_usize].clone()
+        state_below_face[number_of_dice_usize][number_of_kept_dice_usize].clone()
     }
 }
 
