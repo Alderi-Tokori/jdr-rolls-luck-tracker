@@ -98,8 +98,8 @@ impl Distribution {
 
     /// Get the sum of the k highest dice among t dice; This is the optimized code for the general case
     /// but for small cases which will be most of the case encountered in a TTRPG setting, brute
-    /// forcing all the possible permutation and enumerating all o them will be faster
-    /// !todo("Write the brute force code and benchmark it against this one, find the sweet spot where the brute force becomes faster, and call the brute force when you know it's faster than the general case)
+    /// forcing all the possible permutation and enumerating all of them will be faster
+    /// !todo("Write the brute force code and benchmark it against this one, find the sweet spot where the brute force becomes faster, and call the brute force when you know it's faster than the general case")
     pub fn get_sum_highest_k_distribution(&self, number_of_dice: u32, number_of_kept_dice: u32) -> Distribution {
         let k = number_of_dice as usize;
         let t = number_of_kept_dice as usize;
@@ -210,6 +210,26 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
                     }
                 })
             ;
+
+            let last_non_zero = bad_dice_distribution.probabilities.iter()
+                .enumerate()
+                .rev()
+                .find(|(pos, item)| **item > 0.0)
+                ;
+
+            if let Some((pos, val)) = last_non_zero {
+                bad_dice_distribution.probabilities.truncate(pos + 1);
+            }
+
+            let last_non_zero = good_dice_distribution.probabilities.iter()
+                .enumerate()
+                .rev()
+                .find(|(pos, item)| **item > 0.0)
+                ;
+
+            if let Some((pos, val)) = last_non_zero {
+                good_dice_distribution.probabilities.truncate(pos + 1);
+            }
 
             for number_of_bad_dice in 0..=roll.number_of_dice {
                 let number_of_good_dice = roll.number_of_dice - number_of_bad_dice;
