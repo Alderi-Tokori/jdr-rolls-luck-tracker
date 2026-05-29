@@ -98,24 +98,29 @@ impl Distribution {
         self.min_value = new_min;
     }
 
-    pub fn clamp(&mut self, modifier: &ClampingModifier) {
+    pub fn clamped(&self, modifier: &ClampingModifier) -> Distribution {
         match modifier {
             ClampingModifier::Minimum { number } => {
-                if *number <= self.min_value { return; }
-                let idx = (number - self.min_value) as usize;
-                if idx >= self.probabilities.len() { return; }
-                let clamped: f64 = self.probabilities[..idx].iter().sum();
-                self.probabilities.drain(0..idx);
-                self.probabilities[0] += clamped;
-                self.min_value = *number;
+                let n = *number;
+                if n <= self.min_value { return self.clone(); }
+                let idx = (n - self.min_value) as usize;
+                if idx >= self.probabilities.len() { return Distribution::constant(n); }
+                let mut probs = self.probabilities.clone();
+                let clamped: f64 = probs[..idx].iter().sum();
+                probs.drain(0..idx);
+                probs[0] += clamped;
+                Distribution { probabilities: probs, min_value: n }
             }
             ClampingModifier::Maximum { number } => {
+                let n = *number;
                 let max_val = self.min_value + self.probabilities.len() as u32 - 1;
-                if *number >= max_val { return; }
-                let idx = (number - self.min_value) as usize;
-                let clamped: f64 = self.probabilities[idx + 1..].iter().sum();
-                self.probabilities.truncate(idx + 1);
-                self.probabilities[idx] += clamped;
+                if n >= max_val { return self.clone(); }
+                let idx = (n - self.min_value) as usize;
+                let mut probs = self.probabilities.clone();
+                let clamped: f64 = probs[idx + 1..].iter().sum();
+                probs.truncate(idx + 1);
+                probs[idx] += clamped;
+                Distribution { probabilities: probs, min_value: self.min_value }
             }
         }
     }
@@ -307,7 +312,7 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
         }
     } else {
         let effective_base = match &roll.clamping_modifier {
-            Some(clamp) => clamp_distribution(&base_dice_distribution, clamp),
+            Some(clamp) => base_dice_distribution.clamped(clamp),
             None => base_dice_distribution,
         };
         match &roll.keeping_result_modifier {
@@ -340,33 +345,6 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
     }
 
     res.expect("at least one scenario should have been processed")
-}
-
-fn clamp_distribution(dist: &Distribution, clamp: &ClampingModifier) -> Distribution {
-    match clamp {
-        ClampingModifier::Minimum { number } => {
-            let n = *number;
-            if n <= dist.min_value { return dist.clone(); }
-            let idx = (n - dist.min_value) as usize;
-            if idx >= dist.probabilities.len() { return Distribution::constant(n); }
-            let mut probs = dist.probabilities.clone();
-            let clamped: f64 = probs[..idx].iter().sum();
-            probs.drain(0..idx);
-            probs[0] += clamped;
-            Distribution { probabilities: probs, min_value: n }
-        }
-        ClampingModifier::Maximum { number } => {
-            let n = *number;
-            let max_val = dist.min_value + dist.probabilities.len() as u32 - 1;
-            if n >= max_val { return dist.clone(); }
-            let idx = (n - dist.min_value) as usize;
-            let mut probs = dist.probabilities.clone();
-            let clamped: f64 = probs[idx + 1..].iter().sum();
-            probs.truncate(idx + 1);
-            probs[idx] += clamped;
-            Distribution { probabilities: probs, min_value: dist.min_value }
-        }
-    }
 }
 
 fn compute_scenario_no_keep(
