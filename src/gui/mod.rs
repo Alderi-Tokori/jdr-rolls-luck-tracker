@@ -21,14 +21,66 @@ impl Default for State {
         Self {
             screen: Screen::Dashboard(dashboard::Dashboard {
                 graph_points: vec![
-                    Point::new(0.0, 2.0),
-                    Point::new(1.0, 3.0),
-                    Point::new(2.0, 3.0),
-                    Point::new(3.0, 4.0),
-                    Point::new(4.0, 1.0),
-                    Point::new(5.0, 3.0),
-                    Point::new(6.0, 5.0),
-                    Point::new(7.0, 2.0),
+                    Point {
+                        x: 0.0,
+                        y: 2.0,
+                    },
+                    Point {
+                        x: 1.0,
+                        y: 3.0,
+                    },
+                    Point {
+                        x: 2.0,
+                        y: 3.0,
+                    },
+                    Point {
+                        x: 3.0,
+                        y: 4.0,
+                    },
+                    Point {
+                        x: 4.0,
+                        y: 1.0,
+                    },
+                    Point {
+                        x: 5.0,
+                        y: 3.0,
+                    },
+                    Point {
+                        x: 6.0,
+                        y: 5.0,
+                    },
+                    Point {
+                        x: 7.0,
+                        y: 2.0,
+                    },
+                    Point {
+                        x: 8.0,
+                        y: 3.2375002,
+                    },
+                    Point {
+                        x: 9.0,
+                        y: 3.2375002,
+                    },
+                    Point {
+                        x: 10.0,
+                        y: 4.3916664,
+                    },
+                    Point {
+                        x: 11.0,
+                        y: 2.7041667,
+                    },
+                    Point {
+                        x: 12.0,
+                        y: 2.7041667,
+                    },
+                    Point {
+                        x: 13.0,
+                        y: 2.7041667,
+                    },
+                    Point {
+                        x: 14.0,
+                        y: 4.258333,
+                    },
                 ]
             }),
         }
