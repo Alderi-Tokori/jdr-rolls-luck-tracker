@@ -98,6 +98,28 @@ impl Distribution {
         self.min_value = new_min;
     }
 
+    pub fn clamp(&mut self, modifier: &ClampingModifier) {
+        match modifier {
+            ClampingModifier::Minimum { number } => {
+                if *number <= self.min_value { return; }
+                let idx = (number - self.min_value) as usize;
+                if idx >= self.probabilities.len() { return; }
+                let clamped: f64 = self.probabilities[..idx].iter().sum();
+                self.probabilities.drain(0..idx);
+                self.probabilities[0] += clamped;
+                self.min_value = *number;
+            }
+            ClampingModifier::Maximum { number } => {
+                let max_val = self.min_value + self.probabilities.len() as u32 - 1;
+                if *number >= max_val { return; }
+                let idx = (number - self.min_value) as usize;
+                let clamped: f64 = self.probabilities[idx + 1..].iter().sum();
+                self.probabilities.truncate(idx + 1);
+                self.probabilities[idx] += clamped;
+            }
+        }
+    }
+
     /// Get the sum of the k highest dice among t dice; This is the optimized code for the general case
     /// but for small cases which will be most of the case encountered in a TTRPG setting, brute
     /// forcing all the possible permutation and enumerating all of them will be faster
@@ -311,7 +333,11 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
         }
     }
 
-    res.expect("at least one scenario should have been processed")
+    let mut result = res.expect("at least one scenario should have been processed");
+    if let Some(clamp) = &roll.clamping_modifier {
+        result.clamp(clamp);
+    }
+    result
 }
 
 fn compute_scenario_no_keep(
@@ -480,6 +506,7 @@ mod tests {
     use crate::maths::dice::RerollModifier::RerollIfLower;
     use crate::maths::dice::RerollModifier::RerollIfGreater;
     use crate::maths::dice::RerollModifier::RerollIfEqual;
+    use crate::maths::dice::ClampingModifier;
     use super::*;
 
     #[test]
@@ -679,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn it_correctly_computes_sum_of_highest_k_with_reroll_distributions() {
+    fn it_correctly_computes_sum_of_highest_2_with_reroll_distributions() {
         let d = Distribution {
             probabilities: vec![1.0 / 20.0; 20],
             min_value: 1
@@ -1326,6 +1353,74 @@ mod tests {
         for i in 0..result.probabilities.len() {
             assert!((result.probabilities[i] - bf.probabilities[i]).abs() < 1e-6,
                 "value {}: bf {}, result {}", result.min_value + i as u32, bf.probabilities[i], result.probabilities[i]);
+        }
+    }
+
+    #[test]
+    fn it_correctly_computes_sum_of_highest_2_with_reroll_distributions_and_min_10() {
+        // 3d20r2<6kh2min10
+        let d = Distribution {
+            probabilities: vec![1.0 / 20.0; 20],
+            min_value: 1
+        };
+
+        // brute force of keep highest 2 out of three from distribution d with 2 dice to reroll if < 6
+        let mut brute_forced_probabilities = Distribution {
+            probabilities: vec![0.0; d.probabilities.len() * 2 - 1],
+            min_value: 2
+        };
+
+        for i in 1..=20 {
+            for j in 1..=20 {
+                for k in 1..=20 {
+                    let mut sorted_values = vec![i, j, k];
+                    sorted_values.sort();
+
+                    if sorted_values[0] < 6 {
+                        for i in 1..=20 {
+                            if sorted_values[1] < 6 {
+                                for j in 1..=20 {
+                                    let mut sorted_values = vec![i, j, sorted_values[2]];
+                                    sorted_values.sort();
+
+                                    brute_forced_probabilities.probabilities[(sorted_values[1].max(10) + sorted_values[2].max(10) - brute_forced_probabilities.min_value) as usize] += 1.0 / 400.0;
+                                }
+                            } else {
+                                let mut sorted_values = vec![i, sorted_values[1], sorted_values[2]];
+                                sorted_values.sort();
+
+                                brute_forced_probabilities.probabilities[(sorted_values[1].max(10) + sorted_values[2].max(10) - brute_forced_probabilities.min_value) as usize] += 1.0 / 20.0;
+                            }
+                        }
+                    } else {
+                        brute_forced_probabilities.probabilities[(sorted_values[1].max(10) + sorted_values[2].max(10) - brute_forced_probabilities.min_value) as usize] += 1.0;
+                    }
+                }
+            }
+        }
+
+        let sum: f64 = brute_forced_probabilities.probabilities.iter().sum();
+
+        for i in 0..brute_forced_probabilities.probabilities.len() {
+            brute_forced_probabilities.probabilities[i] /= sum;
+        }
+
+        let result = get_dice_roll_distribution(& DiceRoll {
+            number_of_dice: 3,
+            dice_size: 20,
+            reroll_modifier: Some(RerollIfLower {dice_to_reroll: 2, number: 6}),
+            clamping_modifier: None,
+            keeping_result_modifier: Some(KeepHighest {number_of_dice: 2})
+        });
+
+        dbg!(& brute_forced_probabilities, & result);
+
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                    "value {}: brute_force {}, result {}",
+                    result.min_value + i as u32,
+                    brute_forced_probabilities.probabilities[i],
+                    result.probabilities[i]);
         }
     }
 }
