@@ -1190,3 +1190,57 @@ fn it_correctly_computes_sum_of_lowest_2_and_max_15() {
                 result.probabilities[i]);
     }
 }
+
+#[test]
+fn benchmark() {
+    let number_of_dice = 1;
+    let dice_size = 20;
+    let number_to_keep = 0;
+    let dice_to_reroll = 1;
+    let number_for_reroll = 2;
+    let minimum = 0;
+
+    let mut dice_roll = DiceRoll {
+        number_of_dice,
+        dice_size,
+        reroll_modifier: None,
+        clamping_modifier: None,
+        keeping_result_modifier: None
+    };
+
+    if dice_to_reroll > 0 {
+        dice_roll.reroll_modifier = Some(RerollIfLower {
+            dice_to_reroll,
+            number: number_for_reroll
+        });
+    }
+
+    if number_to_keep > 0 {
+        dice_roll.keeping_result_modifier = Some(KeepHighest {
+            number_of_dice: number_to_keep
+        });
+    }
+
+    if minimum > 1 {
+        dice_roll.clamping_modifier = Some(Minimum {
+            number: minimum
+        })
+    }
+
+    let start = std::time::Instant::now();
+    let d = get_dice_roll_distribution(& dice_roll);
+    let elapsed = start.elapsed();
+
+    dbg!(& d);
+
+    println!(
+        "{}d{}kh{}r{}<{}min{} | eval: {:>10.1?}",
+        number_of_dice,
+        dice_size,
+        number_to_keep,
+        dice_to_reroll,
+        number_for_reroll,
+        minimum,
+        elapsed,
+    );
+}
