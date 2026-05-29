@@ -6,17 +6,37 @@ use iced::{Color, Point, Rectangle, Renderer, Size, Theme, Vector};
 use crate::maths::splines;
 use crate::maths::splines::PolynomialFunction;
 
-#[derive(Debug, Clone)]
-pub struct SplineGraph<'a> {
+pub struct SplineGraph<'a, Message = ()> {
     pub data: Option<&'a Vec<Point>>,
     pub line_color: Color,
     pub line_width: f32,
     pub number_of_segments: i32,
     pub min_y: Option<f32>,
     pub max_y: Option<f32>,
+    pub on_click: Option<Box<dyn Fn(Point) -> Message + 'a>>,
 }
 
-impl<'a> Default for SplineGraph<'a> {
+struct AxisInfo {
+    min_x: f32,
+    max_x: f32,
+    min_y: f32,
+    max_y: f32,
+}
+
+impl<'a, Message> SplineGraph<'a, Message> {
+    fn axis_info(&self, data: &[Point]) -> Option<AxisInfo> {
+        if data.len() < 2 {
+            return None;
+        }
+        let min_x = data.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let max_x = data.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
+        let min_y = self.min_y.unwrap_or(data.iter().map(|p| p.y).fold(f32::INFINITY, f32::min));
+        let max_y = self.max_y.unwrap_or(data.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max));
+        Some(AxisInfo { min_x, max_x, min_y, max_y })
+    }
+}
+
+impl<'a, Message> Default for SplineGraph<'a, Message> {
     fn default() -> Self {
         Self {
             data: None,
@@ -25,11 +45,12 @@ impl<'a> Default for SplineGraph<'a> {
             number_of_segments: 1,
             min_y: None,
             max_y: None,
+            on_click: None
         }
     }
 }
 
-impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
+impl<'a, Message> canvas::Program<Message> for SplineGraph<'a, Message> {
     type State = ();
 
     fn draw(
@@ -59,13 +80,11 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
             None => return vec![frame.into_geometry()]
         };
 
-        let min_x = data_iced.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
-        let max_x = data_iced.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
-        let min_y = self.min_y.unwrap_or(data_iced.iter().map(|p| p.y).fold(f32::INFINITY, f32::min));
-        let max_y = self.max_y.unwrap_or(data_iced.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max));
-
-        let x_range = max_x - min_x;
-        let y_range = max_y - min_y;
+        let Some(axis) = self.axis_info(data_iced) else {
+            return vec![frame.into_geometry()];
+        };
+        let x_range = axis.max_x - axis.min_x;
+        let y_range = axis.max_y - axis.min_y;
 
         let graph_w = bounds.width;
         let graph_h = bounds.height;
@@ -82,8 +101,8 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
             let mut builder = canvas::path::Builder::new();
             let first = data_iced[0];
             builder.move_to(Point::new(
-                map_x(graph_w, min_x, x_range, first.x),
-                map_y(graph_h, min_y, y_range, first.y),
+                map_x(graph_w, axis.min_x, x_range, first.x),
+                map_y(graph_h, axis.min_y, y_range, first.y),
             ));
 
             for interval in & graph_spline_polynomial.intervals {
@@ -93,8 +112,8 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
                     let x = interval.start.x + (segment_idx as f32) * segment_step;
 
                     builder.line_to(Point::new(
-                        map_x(graph_w, min_x, x_range, x as f32),
-                        map_y(graph_h, min_y, y_range, interval.eval(x).unwrap_or(0.0) as f32)
+                        map_x(graph_w, axis.min_x, x_range, x as f32),
+                        map_y(graph_h, axis.min_y, y_range, interval.eval(x).unwrap_or(0.0) as f32)
                     ))
                 }
             }
@@ -125,12 +144,37 @@ impl<'a, Message> canvas::Program<Message> for SplineGraph<'a> {
         let fill = Fill::from(self.line_color);
         for point in data_iced {
             let center = Point::new(
-                map_x(graph_w, min_x, x_range, point.x),
-                map_y(graph_h, min_y, y_range, point.y),
+                map_x(graph_w, axis.min_x, x_range, point.x),
+                map_y(graph_h, axis.min_y, y_range, point.y),
             );
             frame.fill(&Path::circle(center, radius), fill);
         }
 
         vec![frame.into_geometry()]
+    }
+
+    fn update(
+        &self,
+        _state: &mut Self::State,
+        event: &canvas::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<canvas::Action<Message>> {
+        if let Some(on_click) = &self.on_click {
+            if let canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event {
+                if let Some(position) = cursor.position_in(bounds) {
+                    let empty_data = vec![];
+                    let data = self.data.unwrap_or(&empty_data);
+                    if let Some(axis) = self.axis_info(data) {
+                        let x_range = axis.max_x - axis.min_x;
+                        let y_range = axis.max_y - axis.min_y;
+                        let graph_x = position.x / bounds.width * x_range + axis.min_x;
+                        let graph_y = (1.0 - position.y / bounds.height) * y_range + axis.min_y;
+                        return Some(canvas::Action::publish(on_click(Point::new(graph_x, graph_y))));
+                    }
+                }
+            }
+        }
+        None
     }
 }

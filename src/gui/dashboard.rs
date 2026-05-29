@@ -10,6 +10,7 @@ pub struct Dashboard {
 #[derive(Debug, Clone, Copy)]
 pub enum Message {
     Placeholder,
+    GraphClicked(Point)
 }
 
 pub enum Action {
@@ -30,6 +31,15 @@ impl Dashboard {
         match message {
             Message::Placeholder => {
                 Action::None
+            },
+            Message::GraphClicked(point) => {
+                self.graph_points.push(Point {
+                    x: self.graph_points.last().map(|p| p.x + 1.0).unwrap_or(0.0),
+                    y: point.y
+                });
+
+                dbg!(& self.graph_points);
+                Action::None
             }
         }
     }
@@ -39,6 +49,7 @@ impl Dashboard {
              canvas(widgets::graph::SplineGraph {
                 data: Some(& self.graph_points),
                 number_of_segments: 50,
+                on_click: Some(Box::new(|point| Message::GraphClicked(point))),
                 ..widgets::graph::SplineGraph::default()
             })
             .width(Length::Fill)
