@@ -2,7 +2,7 @@
 // so probabilities[i] will be the probability to get min_value + i as a final result.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Distribution {
-    probabilities: Vec<f32>,
+    probabilities: Vec<f64>,
     min_value: u32,
 }
 
@@ -69,7 +69,7 @@ impl Distribution {
         self.min_value += n;
     }
 
-    pub fn scale(&mut self, factor: f32) {
+    pub fn scale(&mut self, factor: f64) {
         for p in &mut self.probabilities {
             *p *= factor;
         }
@@ -101,15 +101,15 @@ impl Distribution {
     /// forcing all the possible permutation and enumerating all of them will be faster
     /// !todo("Write the brute force code and benchmark it against this one, find the sweet spot where the brute force becomes faster, and call the brute force when you know it's faster than the general case")
     pub fn get_sum_highest_k_distribution(&self, number_of_dice: u32, number_of_kept_dice: u32) -> Distribution {
-        let k = number_of_dice as usize;
-        let t = number_of_kept_dice as usize;
+        let number_of_dice_usize = number_of_dice as usize;
+        let number_of_kept_dice_usize = number_of_kept_dice as usize;
 
         // Base: only the smallest face — all dice land on it
-        let mut prev = vec![vec![Distribution::constant(0); t + 1]; k + 1];
+        let mut prev = vec![vec![Distribution::constant(0); number_of_kept_dice_usize + 1]; number_of_dice_usize + 1];
         let v0 = self.min_value;
-        for ki in 0..=k {
-            for ti in 0..=ki.min(t) {
-                prev[ki][ti] = Distribution::constant(ti as u32 * v0);
+        for cur_number_of_dice in 0..=number_of_dice_usize {
+            for cur_number_of_kept_dice in 0..=cur_number_of_dice.min(number_of_kept_dice_usize) {
+                prev[cur_number_of_dice][cur_number_of_kept_dice] = Distribution::constant(cur_number_of_kept_dice as u32 * v0);
             }
         }
 
@@ -118,17 +118,17 @@ impl Distribution {
             let v = self.min_value + idx as u32;
             let p = self.probabilities[idx];
 
-            let total = prob_lower + p; // P(≤ this face)
-            let mut curr = vec![vec![Distribution::constant(0); t + 1]; k + 1];
-            for ki in 0..=k {
-                for ti in 0..=ki.min(t) {
+            let total = prob_lower + p; // P(lower than this face)
+            let mut curr = vec![vec![Distribution::constant(0); number_of_kept_dice_usize + 1]; number_of_dice_usize + 1];
+            for cur_number_of_dice in 0..=number_of_dice_usize {
+                for cur_number_of_kept_dice in 0..=cur_number_of_dice.min(number_of_kept_dice_usize) {
                     let mut dist: Option<Distribution> = None;
-                    for c in 0..=ki {
-                        let kept = c.min(ti);
-                        let prob_c = get_combinations(ki as u32, c as u32) as f32
+                    for c in 0..=cur_number_of_dice {
+                        let kept = c.min(cur_number_of_kept_dice);
+                        let prob_c = get_combinations(cur_number_of_dice as u32, c as u32) as f64
                             * (p / total).powi(c as i32)
-                            * (prob_lower / total).powi((ki - c) as i32);
-                        let mut sub = prev[ki - c][ti - kept].clone();
+                            * (prob_lower / total).powi((cur_number_of_dice - c) as i32);
+                        let mut sub = prev[cur_number_of_dice - c][cur_number_of_kept_dice - kept].clone();
                         sub.shift_by(kept as u32 * v);
                         sub.scale(prob_c);
                         match dist.as_mut() {
@@ -136,14 +136,14 @@ impl Distribution {
                             Some(d) => d.merge(&sub),
                         }
                     }
-                    curr[ki][ti] = dist.expect("at least one c in 0..=ki");
+                    curr[cur_number_of_dice][cur_number_of_kept_dice] = dist.expect("at least one c in 0..=cur_number_of_dice");
                 }
             }
             prob_lower = total;
             prev = curr;
         }
 
-        prev[k][t].clone()
+        prev[number_of_dice_usize][number_of_kept_dice_usize].clone()
     }
 }
 
@@ -161,7 +161,7 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
     let mut res: Option<Distribution> = None;
 
     let base_dice_distribution = Distribution {
-        probabilities: vec![1.0 / roll.dice_size as f32; roll.dice_size as usize],
+        probabilities: vec![1.0 / roll.dice_size as f64; roll.dice_size as usize],
         min_value: 1
     };
 
@@ -192,7 +192,7 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
                             bad_dice_distribution.min_value = item;
                         }
 
-                        bad_dice_distribution.probabilities.push(1.0 / bad_rolls.len() as f32);
+                        bad_dice_distribution.probabilities.push(1.0 / bad_rolls.len() as f64);
 
                         if good_dice_distribution.min_value > 0 {
                             good_dice_distribution.probabilities.push(0.0);
@@ -202,7 +202,7 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
                             good_dice_distribution.min_value = item;
                         }
 
-                        good_dice_distribution.probabilities.push(1.0 / (roll.dice_size as usize - bad_rolls.len()) as f32);
+                        good_dice_distribution.probabilities.push(1.0 / (roll.dice_size as usize - bad_rolls.len()) as f64);
 
                         if bad_dice_distribution.min_value > 0 {
                             bad_dice_distribution.probabilities.push(0.0);
@@ -234,9 +234,9 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
             for number_of_bad_dice in 0..=roll.number_of_dice {
                 let number_of_good_dice = roll.number_of_dice - number_of_bad_dice;
 
-                let probability_of_scenario = get_combinations(roll.number_of_dice, number_of_bad_dice) as f32
-                    * probability_of_bad_dice.powi(number_of_bad_dice as i32)
-                    * probability_of_good_dice.powi(number_of_good_dice as i32)
+                let probability_of_scenario = get_combinations(roll.number_of_dice, number_of_bad_dice) as f64
+                    * probability_of_bad_dice.powi(number_of_bad_dice as i32) as f64
+                    * probability_of_good_dice.powi(number_of_good_dice as i32) as f64
                 ;
 
                 let mut scenario_distribution = Distribution {
@@ -303,22 +303,22 @@ mod tests {
 
         assert_eq!(d1, Distribution {
             probabilities: vec![
-                0.00462963,
-                0.01388889,
-                0.027777782,
-                0.046296302,
-                0.06944445,
-                0.097222224,
-                0.115740746,
-                0.12500001,
-                0.12500001,
-                0.115740746,
-                0.097222224,
-                0.06944445,
-                0.0462963,
-                0.02777778,
-                0.01388889,
-                0.00462963,
+                0.004629629629629629,
+                0.013888888888888888,
+                0.027777777777777776,
+                0.046296296296296294,
+                0.06944444444444445,
+                0.09722222222222224,
+                0.11574074074074074,
+                0.125,
+                0.125,
+                0.11574074074074073,
+                0.09722222222222222,
+                0.06944444444444445,
+                0.046296296296296294,
+                0.027777777777777776,
+                0.013888888888888888,
+                0.004629629629629629
             ],
             min_value: 3,
         });
@@ -344,7 +344,7 @@ mod tests {
             }
         }
 
-        let sum: f32 = brute_forced_probabilities.probabilities.iter().sum();
+        let sum: f64 = brute_forced_probabilities.probabilities.iter().sum();
 
         for i in 0..brute_forced_probabilities.probabilities.len() {
             brute_forced_probabilities.probabilities[i] /= sum;
@@ -384,9 +384,55 @@ mod tests {
         assert_eq!(result.probabilities.len(), 20);
         // P(max=i) = (i^2 - (i-1)^2) / 400 = (2i-1)/400
         for i in 0u32..20 {
-            let expected = (2.0 * (i + 1) as f32 - 1.0) / 400.0;
+            let expected = (2.0 * (i + 1) as f64 - 1.0) / 400.0;
             assert!((result.probabilities[i as usize] - expected).abs() < 1e-6,
-                "i={i}: expected {expected}, got {}", result.probabilities[i as usize]);
+                    "i={i}: expected {expected}, got {}", result.probabilities[i as usize]);
+        }
+    }
+
+    #[test]
+    fn it_correctly_computes_sum_of_highest_k_with_weirder_distributions() {
+        let d = Distribution {
+            probabilities: vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1],
+            min_value: 1
+        };
+
+        // brute force of keep highest 2 out of three from distribution d
+        let mut brute_forced_probabilities = Distribution {
+            probabilities: vec![0.0; d.probabilities.len() * 2 - 1],
+            min_value: 2
+        };
+
+        let possible_values = vec![1, 2, 3, 4, 5, 6, 7, 8, 10, 20];
+
+        for i in 0..10 {
+            for j in 0..10 {
+                for k in 0..10 {
+                    let min = possible_values[i].min(possible_values[j].min(possible_values[k]));
+                    let sum = possible_values[i] + possible_values[j] + possible_values[k] - min;
+
+                    brute_forced_probabilities.probabilities[(sum - brute_forced_probabilities.min_value) as usize] += 1.0;
+                }
+            }
+        }
+
+        let sum: f64 = brute_forced_probabilities.probabilities.iter().sum();
+
+        for i in 0..brute_forced_probabilities.probabilities.len() {
+            brute_forced_probabilities.probabilities[i] /= sum;
+        }
+
+        let result = d.get_sum_highest_k_distribution(3, 2);
+
+        assert_eq!(result.min_value, 2);
+        assert_eq!(result.probabilities.len(), 39);
+
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                    "value {}: brute_force {}, result {}",
+                    result.min_value + i as u32,
+                    brute_forced_probabilities.probabilities[i],
+                    result.probabilities[i]);
         }
     }
 }
