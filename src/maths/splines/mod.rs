@@ -84,8 +84,8 @@ fn get_graph_spline_intervals(points: &[Point]) -> Vec<GraphSplineInterval> {
         .for_each(|points| {
             let mut degree = 3;
 
-        if (points[0].y < points[1].y && points[2].y < points[1].y)
-            || (points[0].y > points[1].y && points[2].y > points[1].y) {
+            if (points[0].y < points[1].y && points[2].y < points[1].y)
+                || (points[0].y > points[1].y && points[2].y > points[1].y) {
                 // To accomodate for the additionnal constraint at local optimum, the splines leading to a local
                 // optimum will need to be quartic instead of only cubic
                 degree += 1;
