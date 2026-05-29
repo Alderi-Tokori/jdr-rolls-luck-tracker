@@ -238,43 +238,273 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
                 * probability_of_good_dice.powi(number_of_good_dice as i32) as f64
                 ;
 
-            let mut scenario_distribution = Distribution {
-                probabilities: Vec::with_capacity((roll.number_of_dice * roll.dice_size - roll.number_of_dice + 1) as usize),
-                min_value: 0
-            };
-
-            scenario_distribution.probabilities.push(1.0);
-
-            if number_of_bad_dice > dice_to_reroll {
-                let bad_dice_to_keep = number_of_bad_dice - dice_to_reroll;
-
-                let kept_bad_dice_distribution =
-                    bad_dice_distribution.get_sum_highest_k_distribution(number_of_bad_dice, bad_dice_to_keep);
-                ;
-
-                scenario_distribution.add(& kept_bad_dice_distribution);
-            }
-
             let number_of_rerolled_dice = dice_to_reroll.min(number_of_bad_dice);
+            let number_of_kept_bad_dice = number_of_bad_dice.saturating_sub(dice_to_reroll);
 
-            for _ in 0..number_of_rerolled_dice {
-                scenario_distribution.add(& base_dice_distribution);
-            }
+            let scenario_distribution =
+                match &roll.keeping_result_modifier {
+                    Some(KeepingResultModifier::KeepHighest { number_of_dice: 2 }) => {
+                        compute_scenario_keep_highest_2(
+                            number_of_good_dice, &good_dice_distribution,
+                            number_of_bad_dice, number_of_kept_bad_dice,
+                            number_of_rerolled_dice, &bad_dice_distribution,
+                            &base_dice_distribution,
+                        )
+                    }
+                    Some(_) => {
+                        unimplemented!("only KeepHighest(2) is supported for now")
+                    }
+                    None => {
+                        compute_scenario_no_keep(
+                            number_of_good_dice, &good_dice_distribution,
+                            number_of_bad_dice, number_of_kept_bad_dice,
+                            number_of_rerolled_dice, &bad_dice_distribution,
+                            &base_dice_distribution,
+                        )
+                    }
+                };
 
-            for _ in 0..number_of_good_dice {
-                scenario_distribution.add(& good_dice_distribution);
-            }
-
-            scenario_distribution.scale(probability_of_scenario);
+            let mut weighted = scenario_distribution;
+            weighted.scale(probability_of_scenario);
             if let Some(r) = &mut res {
-                r.merge(& scenario_distribution);
+                r.merge(& weighted);
             } else {
-                res = Some(scenario_distribution);
+                res = Some(weighted);
             }
         }
     }
 
     res.expect("at least one scenario should have been processed")
+}
+
+fn compute_scenario_no_keep(
+    number_of_good_dice: u32,
+    good_dist: &Distribution,
+    number_of_bad_dice: u32,
+    number_of_kept_bad_dice: u32,
+    number_of_rerolled_dice: u32,
+    bad_dist: &Distribution,
+    base_dist: &Distribution,
+) -> Distribution {
+    let mut dist = Distribution {
+        probabilities: vec![1.0f64],
+        min_value: 0,
+    };
+
+    if number_of_kept_bad_dice > 0 {
+        let kept_bad_sum = bad_dist.get_sum_highest_k_distribution(
+            number_of_bad_dice,
+            number_of_kept_bad_dice,
+        );
+        dist.add(&kept_bad_sum);
+    }
+
+    for _ in 0..number_of_rerolled_dice {
+        dist.add(base_dist);
+    }
+
+    for _ in 0..number_of_good_dice {
+        dist.add(good_dist);
+    }
+
+    dist
+}
+
+fn compute_scenario_keep_highest_2(
+    number_of_good_dice: u32,
+    good_dist: &Distribution,
+    number_of_bad_dice: u32,
+    number_of_kept_bad_dice: u32,
+    number_of_rerolled_dice: u32,
+    bad_dist: &Distribution,
+    base_dist: &Distribution,
+) -> Distribution {
+    let max_value_good = (good_dist.min_value + good_dist.probabilities.len() as u32 - 1) as usize;
+    let max_value_bad = (bad_dist.min_value + bad_dist.probabilities.len() as u32 - 1) as usize;
+    let max_value_base = (base_dist.min_value + base_dist.probabilities.len() as u32 - 1) as usize;
+    let max_value = max_value_good.max(max_value_bad).max(max_value_base);
+
+    let mut state = vec![vec![0.0f64; max_value + 1]; max_value + 1];
+    state[0][0] = 1.0;
+
+    if number_of_kept_bad_dice == 1 {
+        let dist = distribution_of_max(
+            number_of_bad_dice,
+            bad_dist,
+            max_value,
+        );
+        state = add_single_die_to_top2_state(&state, &dist, max_value);
+    } else if number_of_kept_bad_dice > 1 {
+        unimplemented!("kept_bad > 1 not yet supported analytically");
+    }
+
+    if number_of_rerolled_dice == 1 {
+        state = add_single_die_to_top2_state(&state, base_dist, max_value);
+    } else if number_of_rerolled_dice >= 2 {
+        state = add_iid_group_to_top2_state(&state, base_dist, number_of_rerolled_dice, max_value);
+    }
+
+    if number_of_good_dice == 1 {
+        state = add_single_die_to_top2_state(&state, good_dist, max_value);
+    } else if number_of_good_dice >= 2 {
+        state = add_iid_group_to_top2_state(&state, good_dist, number_of_good_dice, max_value);
+    }
+
+    top2_state_to_distribution(&state)
+}
+
+fn distribution_of_max(
+    n: u32,
+    dist: &Distribution,
+    max_value: usize,
+) -> Distribution {
+    let mut cdf = 0.0f64;
+    let mut probs = vec![0.0f64; max_value + 1];
+    let mut min = u32::MAX;
+    for i in 0..dist.probabilities.len() {
+        cdf += dist.probabilities[i];
+        let prev_cdf = cdf - dist.probabilities[i];
+        let v = dist.min_value + i as u32;
+        let p_val = cdf.powi(n as i32) - prev_cdf.powi(n as i32);
+        if p_val > 0.0 {
+            probs[v as usize] = p_val;
+            if v < min { min = v; }
+        }
+    }
+    // Compact: remove leading zeros
+    let leading_zeros = probs.iter().position(|&p| p > 0.0).unwrap_or(0);
+    probs.drain(0..leading_zeros);
+    Distribution {
+        probabilities: probs,
+        min_value: min,
+    }
+}
+
+fn add_single_die_to_top2_state(
+    state: &[Vec<f64>],
+    die_dist: &Distribution,
+    max_value: usize,
+) -> Vec<Vec<f64>> {
+    let mut new_state = vec![vec![0.0f64; max_value + 1]; max_value + 1];
+
+    let values: Vec<u32> = (die_dist.min_value..die_dist.min_value + die_dist.probabilities.len() as u32)
+        .filter(|&v| (v as usize) <= max_value)
+        .collect();
+
+    for top1 in 0..=max_value {
+        for top2 in 0..=top1 {
+            let p = state[top1][top2];
+            if p == 0.0 {
+                continue;
+            }
+            for (vi, &v) in values.iter().enumerate() {
+                let prob_v = die_dist.probabilities[vi];
+                let (nt1, nt2) = if v as usize >= top1 {
+                    (v as usize, top1)
+                } else if v as usize >= top2 {
+                    (top1, v as usize)
+                } else {
+                    (top1, top2)
+                };
+                new_state[nt1][nt2] += p * prob_v;
+            }
+        }
+    }
+    new_state
+}
+
+fn add_iid_group_to_top2_state(
+    state: &[Vec<f64>],
+    die_dist: &Distribution,
+    count: u32,
+    max_value: usize,
+) -> Vec<Vec<f64>> {
+    let n = count as usize;
+    let values: Vec<u32> = (die_dist.min_value..die_dist.min_value + die_dist.probabilities.len() as u32)
+        .filter(|&v| (v as usize) <= max_value)
+        .collect();
+
+    let mut cdf = vec![0.0f64];
+    for &p in &die_dist.probabilities {
+        let last = *cdf.last().unwrap();
+        cdf.push(last + p);
+    }
+
+    // joint[M][S] = P(max=M, second_max=S), S < M; joint[M][M] for S == M
+    let mut joint = vec![vec![0.0f64; max_value + 1]; max_value + 1];
+
+    if n >= 2 {
+        for mi in 0..values.len() {
+            let m = values[mi] as usize;
+            let pm = die_dist.probabilities[mi];
+            let fm = cdf[mi + 1];
+            let fm1 = cdf[mi];
+
+            joint[m][m] = fm.powi(n as i32)
+                - fm1.powi(n as i32)
+                - n as f64 * pm * fm1.powi((n - 1) as i32);
+
+            for si in 0..mi {
+                let s = values[si] as usize;
+                let fs = cdf[si + 1];
+                let fs1 = cdf[si];
+                joint[m][s] = n as f64 * pm
+                    * (fs.powi((n - 1) as i32) - fs1.powi((n - 1) as i32));
+            }
+        }
+    } else {
+        for mi in 0..values.len() {
+            let m = values[mi] as usize;
+            joint[m][0] = die_dist.probabilities[mi];
+        }
+    }
+
+    let mut new_state = vec![vec![0.0f64; max_value + 1]; max_value + 1];
+    for top1 in 0..=max_value {
+        for top2 in 0..=top1 {
+            let p = state[top1][top2];
+            if p == 0.0 {
+                continue;
+            }
+            for m in 0..=max_value {
+                for s in 0..=m {
+                    let p_ms = joint[m][s];
+                    if p_ms == 0.0 {
+                        continue;
+                    }
+                    let mut sorted = [top1, top2, m, s];
+                    sorted.sort_unstable_by(|a, b| b.cmp(a));
+                    new_state[sorted[0]][sorted[1]] += p * p_ms;
+                }
+            }
+        }
+    }
+    new_state
+}
+
+fn top2_state_to_distribution(state: &[Vec<f64>]) -> Distribution {
+    let max_value = state.len() - 1;
+    let max_sum = max_value * 2;
+    let mut probs = vec![0.0f64; max_sum + 1];
+
+    for top1 in 0..=max_value {
+        for top2 in 0..=top1 {
+            let p = state[top1][top2];
+            if p == 0.0 {
+                continue;
+            }
+            let sum = if top2 > 0 { top1 + top2 } else { top1 };
+            probs[sum] += p;
+        }
+    }
+
+    let leading_zeros = probs.iter().position(|&p| p > 0.0).unwrap_or(0);
+    probs.drain(0..leading_zeros);
+
+    Distribution {
+        probabilities: probs,
+        min_value: leading_zeros as u32,
+    }
 }
 
 #[cfg(test)]
@@ -384,7 +614,7 @@ mod tests {
         for i in 0u32..20 {
             let expected = (2.0 * (i + 1) as f64 - 1.0) / 400.0;
             assert!((result.probabilities[i as usize] - expected).abs() < 1e-6,
-                    "i={i}: expected {expected}, got {}", result.probabilities[i as usize]);
+                "i={i}: expected {expected}, got {}", result.probabilities[i as usize]);
         }
     }
 
@@ -427,10 +657,10 @@ mod tests {
 
         for i in 0..result.probabilities.len() {
             assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
-                    "value {}: brute_force {}, result {}",
-                    result.min_value + i as u32,
-                    brute_forced_probabilities.probabilities[i],
-                    result.probabilities[i]);
+                "value {}: brute_force {}, result {}",
+                result.min_value + i as u32,
+                brute_forced_probabilities.probabilities[i],
+                result.probabilities[i]);
         }
     }
 
@@ -473,10 +703,10 @@ mod tests {
 
         for i in 0..result.probabilities.len() {
             assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
-                    "value {}: brute_force {}, result {}",
-                    result.min_value + i as u32,
-                    brute_forced_probabilities.probabilities[i],
-                    result.probabilities[i]);
+                "value {}: brute_force {}, result {}",
+                result.min_value + i as u32,
+                brute_forced_probabilities.probabilities[i],
+                result.probabilities[i]);
         }
     }
 
@@ -537,5 +767,13 @@ mod tests {
         });
 
         dbg!(& brute_forced_probabilities, & result);
+
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                "value {}: brute_force {}, result {}",
+                result.min_value + i as u32,
+                brute_forced_probabilities.probabilities[i],
+                result.probabilities[i]);
+        }
     }
 }
