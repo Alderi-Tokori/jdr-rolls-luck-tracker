@@ -167,12 +167,12 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
         min_value: 1
     };
 
-    if let Some(modifier) = & roll.reroll_modifier {
-        let (dice_to_reroll, bad_rolls) = match modifier {
-            RerollModifier::RerollIfLower {dice_to_reroll, number} => (*dice_to_reroll, &(1..*number).collect()),
-            RerollModifier::RerollIfGreater {dice_to_reroll, number} => (*dice_to_reroll, &(number+1..=roll.dice_size).collect()),
-            RerollModifier::RerollIfEqual {dice_to_reroll, numbers} => (*dice_to_reroll, numbers)
-        };
+        if let Some(modifier) = & roll.reroll_modifier {
+            let (dice_to_reroll, bad_rolls) = match modifier {
+                RerollModifier::RerollIfLower {dice_to_reroll, number} => (*dice_to_reroll, &(1..*number).collect()),
+                RerollModifier::RerollIfGreater {dice_to_reroll, number} => (*dice_to_reroll, &(number+1..=roll.dice_size).collect()),
+                RerollModifier::RerollIfEqual {dice_to_reroll, numbers} => (*dice_to_reroll, numbers)
+            };
 
         let probability_of_bad_dice = bad_rolls.len() as f32 / roll.dice_size as f32;
         let probability_of_good_dice = 1.0 - probability_of_bad_dice;
@@ -478,6 +478,7 @@ mod tests {
     use crate::maths::dice::KeepingResultModifier::KeepHighest;
     use crate::maths::dice::KeepingResultModifier::KeepLowest;
     use crate::maths::dice::RerollModifier::RerollIfLower;
+    use crate::maths::dice::RerollModifier::RerollIfGreater;
     use super::*;
 
     #[test]
@@ -1139,6 +1140,51 @@ mod tests {
         let result = get_dice_roll_distribution(&DiceRoll {
             number_of_dice: 5, dice_size: 6,
             reroll_modifier: Some(RerollIfLower {dice_to_reroll: 2, number: 3}),
+            clamping_modifier: None, keeping_result_modifier: Some(KeepLowest {number_of_dice: 3})
+        });
+        assert_eq!(result.min_value, bf.min_value);
+        assert_eq!(result.probabilities.len(), bf.probabilities.len());
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - bf.probabilities[i]).abs() < 1e-6,
+                "value {}: bf {}, result {}", result.min_value + i as u32, bf.probabilities[i], result.probabilities[i]);
+        }
+    }
+
+    #[test]
+    fn it_correctly_computes_reroll_greater_with_keep_lowest() {
+        // 5d6r2>3kl3: reroll up to 2 if > 3 (bad=4,5,6), keep lowest 3
+        let mut bf = Distribution { probabilities: vec![0.0; 16], min_value: 3u32 };
+        for a in 1u32..=6 { for b in 1u32..=6 { for c in 1u32..=6 { for d in 1u32..=6 { for e in 1u32..=6 {
+            let mut sorted = vec![a, b, c, d, e]; sorted.sort();
+            let bad_count = sorted.iter().filter(|&&x| x > 3).count();
+            let reroll_count = 2.min(bad_count);
+            let kept_count = bad_count - reroll_count;
+            let good_vals: Vec<u32> = sorted.iter().take(5 - bad_count).copied().collect();
+            let bad_vals: Vec<u32> = sorted.iter().skip(5 - bad_count).copied().collect();
+            if bad_count == 0 {
+                let mut all = good_vals; all.sort();
+                bf.probabilities[(all[0] + all[1] + all[2] - bf.min_value) as usize] += 1.0;
+            } else if bad_count == 1 {
+                for r1 in 1u32..=6 {
+                    let mut final_vals = vec![r1]; final_vals.extend(&good_vals); final_vals.sort();
+                    bf.probabilities[(final_vals[0] + final_vals[1] + final_vals[2] - bf.min_value) as usize] += 1.0 / 6.0;
+                }
+            } else {
+                for r1 in 1u32..=6 { for r2 in 1u32..=6 {
+                    let mut final_vals: Vec<u32> = vec![r1, r2];
+                    let kept_bad: Vec<u32> = bad_vals.iter().rev().take(kept_count).copied().collect();
+                    final_vals.extend(&kept_bad);
+                    final_vals.extend(&good_vals);
+                    final_vals.sort();
+                    bf.probabilities[(final_vals[0] + final_vals[1] + final_vals[2] - bf.min_value) as usize] += 1.0 / 36.0;
+                }}
+            }
+        }}}}}
+        let total: f64 = bf.probabilities.iter().sum();
+        for p in &mut bf.probabilities { *p /= total; }
+        let result = get_dice_roll_distribution(&DiceRoll {
+            number_of_dice: 5, dice_size: 6,
+            reroll_modifier: Some(RerollIfGreater {dice_to_reroll: 2, number: 3}),
             clamping_modifier: None, keeping_result_modifier: Some(KeepLowest {number_of_dice: 3})
         });
         assert_eq!(result.min_value, bf.min_value);
