@@ -435,4 +435,50 @@ mod tests {
                     result.probabilities[i]);
         }
     }
+
+    #[test]
+    fn it_correctly_computes_sum_of_highest_k_with_weirder_non_uniform_distributions() {
+        let d = Distribution {
+            probabilities: vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2],
+            min_value: 1
+        };
+
+        // brute force of keep highest 2 out of three from distribution d
+        let mut brute_forced_probabilities = Distribution {
+            probabilities: vec![0.0; d.probabilities.len() * 2 - 1],
+            min_value: 2
+        };
+
+        let possible_values = vec![1, 2, 3, 4, 5, 6, 10, 10, 20, 20];
+
+        for i in 0..10 {
+            for j in 0..10 {
+                for k in 0..10 {
+                    let min = possible_values[i].min(possible_values[j].min(possible_values[k]));
+                    let sum = possible_values[i] + possible_values[j] + possible_values[k] - min;
+
+                    brute_forced_probabilities.probabilities[(sum - brute_forced_probabilities.min_value) as usize] += 1.0;
+                }
+            }
+        }
+
+        let sum: f64 = brute_forced_probabilities.probabilities.iter().sum();
+
+        for i in 0..brute_forced_probabilities.probabilities.len() {
+            brute_forced_probabilities.probabilities[i] /= sum;
+        }
+
+        let result = d.get_sum_highest_k_distribution(3, 2);
+
+        assert_eq!(result.min_value, 2);
+        assert_eq!(result.probabilities.len(), 39);
+
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                    "value {}: brute_force {}, result {}",
+                    result.min_value + i as u32,
+                    brute_forced_probabilities.probabilities[i],
+                    result.probabilities[i]);
+        }
+    }
 }
