@@ -165,116 +165,113 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
         min_value: 1
     };
 
-    match &roll.reroll_modifier {
-        Some(modifier) => {
-            let (dice_to_reroll, bad_rolls) = match modifier {
-                RerollModifier::RerollIfLower {dice_to_reroll, number} => (*dice_to_reroll, &(1..*number).collect()),
-                RerollModifier::RerollIfGreater {dice_to_reroll, number} => (*dice_to_reroll, &(number+1..=roll.dice_size).collect()),
-                RerollModifier::RerollIfEqual {dice_to_reroll, numbers} => (*dice_to_reroll, numbers)
-            };
+    if let Some(modifier) = & roll.reroll_modifier {
+        let (dice_to_reroll, bad_rolls) = match modifier {
+            RerollModifier::RerollIfLower {dice_to_reroll, number} => (*dice_to_reroll, &(1..*number).collect()),
+            RerollModifier::RerollIfGreater {dice_to_reroll, number} => (*dice_to_reroll, &(number+1..=roll.dice_size).collect()),
+            RerollModifier::RerollIfEqual {dice_to_reroll, numbers} => (*dice_to_reroll, numbers)
+        };
 
-            let probability_of_bad_dice = bad_rolls.len() as f32 / roll.dice_size as f32;
-            let probability_of_good_dice = 1.0 - probability_of_bad_dice;
+        let probability_of_bad_dice = bad_rolls.len() as f32 / roll.dice_size as f32;
+        let probability_of_good_dice = 1.0 - probability_of_bad_dice;
 
-            let mut good_dice_distribution = Distribution {
-                probabilities: Vec::with_capacity(roll.dice_size as usize),
-                min_value: 0,
-            };
-            let mut bad_dice_distribution = Distribution {
-                probabilities: Vec::with_capacity(roll.dice_size as usize),
-                min_value: 0,
-            };
+        let mut good_dice_distribution = Distribution {
+            probabilities: Vec::with_capacity(roll.dice_size as usize),
+            min_value: 0,
+        };
+        let mut bad_dice_distribution = Distribution {
+            probabilities: Vec::with_capacity(roll.dice_size as usize),
+            min_value: 0,
+        };
 
-            (1..=roll.dice_size)
-                .for_each(|item| {
-                    if bad_rolls.contains(& item) {
-                        if bad_dice_distribution.min_value == 0 {
-                            bad_dice_distribution.min_value = item;
-                        }
-
-                        bad_dice_distribution.probabilities.push(1.0 / bad_rolls.len() as f64);
-
-                        if good_dice_distribution.min_value > 0 {
-                            good_dice_distribution.probabilities.push(0.0);
-                        }
-                    } else {
-                        if good_dice_distribution.min_value == 0 {
-                            good_dice_distribution.min_value = item;
-                        }
-
-                        good_dice_distribution.probabilities.push(1.0 / (roll.dice_size as usize - bad_rolls.len()) as f64);
-
-                        if bad_dice_distribution.min_value > 0 {
-                            bad_dice_distribution.probabilities.push(0.0);
-                        }
+        (1..=roll.dice_size)
+            .for_each(|item| {
+                if bad_rolls.contains(& item) {
+                    if bad_dice_distribution.min_value == 0 {
+                        bad_dice_distribution.min_value = item;
                     }
-                })
+
+                    bad_dice_distribution.probabilities.push(1.0 / bad_rolls.len() as f64);
+
+                    if good_dice_distribution.min_value > 0 {
+                        good_dice_distribution.probabilities.push(0.0);
+                    }
+                } else {
+                    if good_dice_distribution.min_value == 0 {
+                        good_dice_distribution.min_value = item;
+                    }
+
+                    good_dice_distribution.probabilities.push(1.0 / (roll.dice_size as usize - bad_rolls.len()) as f64);
+
+                    if bad_dice_distribution.min_value > 0 {
+                        bad_dice_distribution.probabilities.push(0.0);
+                    }
+                }
+            })
+        ;
+
+        let last_non_zero = bad_dice_distribution.probabilities.iter()
+            .enumerate()
+            .rev()
+            .find(|(pos, item)| **item > 0.0)
             ;
 
-            let last_non_zero = bad_dice_distribution.probabilities.iter()
-                .enumerate()
-                .rev()
-                .find(|(pos, item)| **item > 0.0)
+        if let Some((pos, val)) = last_non_zero {
+            bad_dice_distribution.probabilities.truncate(pos + 1);
+        }
+
+        let last_non_zero = good_dice_distribution.probabilities.iter()
+            .enumerate()
+            .rev()
+            .find(|(pos, item)| **item > 0.0)
+            ;
+
+        if let Some((pos, val)) = last_non_zero {
+            good_dice_distribution.probabilities.truncate(pos + 1);
+        }
+
+        for number_of_bad_dice in 0..=roll.number_of_dice {
+            let number_of_good_dice = roll.number_of_dice - number_of_bad_dice;
+
+            let probability_of_scenario = get_combinations(roll.number_of_dice, number_of_bad_dice) as f64
+                * probability_of_bad_dice.powi(number_of_bad_dice as i32) as f64
+                * probability_of_good_dice.powi(number_of_good_dice as i32) as f64
                 ;
 
-            if let Some((pos, val)) = last_non_zero {
-                bad_dice_distribution.probabilities.truncate(pos + 1);
-            }
+            let mut scenario_distribution = Distribution {
+                probabilities: Vec::with_capacity((roll.number_of_dice * roll.dice_size - roll.number_of_dice + 1) as usize),
+                min_value: 0
+            };
 
-            let last_non_zero = good_dice_distribution.probabilities.iter()
-                .enumerate()
-                .rev()
-                .find(|(pos, item)| **item > 0.0)
+            scenario_distribution.probabilities.push(1.0);
+
+            if number_of_bad_dice > dice_to_reroll {
+                let bad_dice_to_keep = number_of_bad_dice - dice_to_reroll;
+
+                let kept_bad_dice_distribution =
+                    bad_dice_distribution.get_sum_highest_k_distribution(number_of_bad_dice, bad_dice_to_keep);
                 ;
 
-            if let Some((pos, val)) = last_non_zero {
-                good_dice_distribution.probabilities.truncate(pos + 1);
+                scenario_distribution.add(& kept_bad_dice_distribution);
             }
 
-            for number_of_bad_dice in 0..=roll.number_of_dice {
-                let number_of_good_dice = roll.number_of_dice - number_of_bad_dice;
+            let number_of_rerolled_dice = dice_to_reroll.min(number_of_bad_dice);
 
-                let probability_of_scenario = get_combinations(roll.number_of_dice, number_of_bad_dice) as f64
-                    * probability_of_bad_dice.powi(number_of_bad_dice as i32) as f64
-                    * probability_of_good_dice.powi(number_of_good_dice as i32) as f64
-                ;
-
-                let mut scenario_distribution = Distribution {
-                    probabilities: Vec::with_capacity((roll.number_of_dice * roll.dice_size - roll.number_of_dice + 1) as usize),
-                    min_value: 0
-                };
-
-                scenario_distribution.probabilities.push(1.0);
-
-                if number_of_bad_dice > dice_to_reroll {
-                    let bad_dice_to_keep = number_of_bad_dice - dice_to_reroll;
-
-                    let kept_bad_dice_distribution =
-                        bad_dice_distribution.get_sum_highest_k_distribution(number_of_bad_dice, bad_dice_to_keep);
-                    ;
-
-                    scenario_distribution.add(& kept_bad_dice_distribution);
-                }
-
-                let number_of_rerolled_dice = dice_to_reroll.min(number_of_bad_dice);
-
-                for _ in 0..number_of_rerolled_dice {
-                    scenario_distribution.add(& base_dice_distribution);
-                }
-
-                for _ in 0..number_of_good_dice {
-                    scenario_distribution.add(& good_dice_distribution);
-                }
-
-                scenario_distribution.scale(probability_of_scenario);
-                if let Some(r) = &mut res {
-                    r.merge(& scenario_distribution);
-                } else {
-                    res = Some(scenario_distribution);
-                }
+            for _ in 0..number_of_rerolled_dice {
+                scenario_distribution.add(& base_dice_distribution);
             }
-        },
-        None => ()
+
+            for _ in 0..number_of_good_dice {
+                scenario_distribution.add(& good_dice_distribution);
+            }
+
+            scenario_distribution.scale(probability_of_scenario);
+            if let Some(r) = &mut res {
+                r.merge(& scenario_distribution);
+            } else {
+                res = Some(scenario_distribution);
+            }
+        }
     }
 
     res.expect("at least one scenario should have been processed")
