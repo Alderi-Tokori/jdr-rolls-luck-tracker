@@ -275,6 +275,25 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
                 res = Some(weighted);
             }
         }
+    } else {
+        match &roll.keeping_result_modifier {
+            Some(KeepingResultModifier::KeepHighest { number_of_dice }) => {
+                let k = (*number_of_dice).min(roll.number_of_dice);
+                res = Some(base_dice_distribution.get_sum_highest_k_distribution(
+                    roll.number_of_dice, k,
+                ));
+            }
+            Some(KeepingResultModifier::KeepLowest { number_of_dice: _ }) => {
+                unimplemented!("KeepLowest without rerolls not yet supported")
+            }
+            None => {
+                let mut dist = Distribution { probabilities: vec![1.0], min_value: 0 };
+                for _ in 0..roll.number_of_dice {
+                    dist.add(&base_dice_distribution);
+                }
+                res = Some(dist);
+            }
+        }
     }
 
     res.expect("at least one scenario should have been processed")
@@ -353,16 +372,25 @@ fn compute_scenario_keep_highest_n(
         current
     }
 
-    // Kept bad dice (top kept_count of b bad dice)
+    // Kept bad dice: the top kept_count of number_of_bad_dice i.i.d. bad dice.
+    // Compute their state separately, then merge into the main state.
     let kept_bad_to_model = number_of_kept_bad_dice.min(k as u32);
-    if kept_bad_to_model == 1 {
-        let max_bad_dist = distribution_of_max(
-            number_of_bad_dice, bad_dist,
-            (bad_dist.min_value + bad_dist.probabilities.len() as u32 - 1) as usize,
-        );
-        state = add_dice_to_state(state, &max_bad_dist, 1, k);
-    } else if kept_bad_to_model > 1 {
-        unimplemented!("kept_bad > 1 not yet supported");
+    if kept_bad_to_model > 0 {
+        let mut bad_state: HashMap<Vec<u32>, f64> = HashMap::new();
+        bad_state.insert(Vec::new(), 1.0);
+        bad_state = add_dice_to_state(bad_state, bad_dist, number_of_bad_dice, kept_bad_to_model as usize);
+
+        let mut merged: HashMap<Vec<u32>, f64> = HashMap::new();
+        for (main_vals, main_prob) in &state {
+            for (bad_vals, bad_prob) in &bad_state {
+                let mut combined = main_vals.clone();
+                combined.extend(bad_vals.iter().copied());
+                combined.sort_unstable_by(|a, b| b.cmp(a));
+                combined.truncate(k);
+                *merged.entry(combined).or_insert(0.0) += main_prob * bad_prob;
+            }
+        }
+        state = merged;
     }
 
     // Rerolled dice
@@ -837,6 +865,120 @@ mod tests {
 
         assert_eq!(result.min_value, bf.min_value);
         assert_eq!(result.probabilities.len(), bf.probabilities.len());
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - bf.probabilities[i]).abs() < 1e-6,
+                "value {}: bf {}, result {}", result.min_value + i as u32, bf.probabilities[i], result.probabilities[i]);
+        }
+    }
+
+    #[test]
+    fn it_correctly_computes_keep_highest_3_of_5_dice_without_rerolls() {
+        // 5d6kh3, brute force 6^5 = 7776 combos
+        let mut bf = Distribution {
+            probabilities: vec![0.0; 16],  // values 3..=18
+            min_value: 3
+        };
+
+        for a in 1..=6 {
+            for b in 1..=6 {
+                for c in 1..=6 {
+                    for d in 1..=6 {
+                        for e in 1..=6 {
+                            let mut vals = vec![a, b, c, d, e];
+                            vals.sort_unstable_by(|x, y| y.cmp(x));
+                            let sum = vals[0] + vals[1] + vals[2];
+                            bf.probabilities[(sum - bf.min_value) as usize] += 1.0;
+                        }
+                    }
+                }
+            }
+        }
+
+        let total = 6.0f64.powi(5);
+        for p in &mut bf.probabilities { *p /= total; }
+
+        let result = get_dice_roll_distribution(& DiceRoll {
+            number_of_dice: 5, dice_size: 6,
+            reroll_modifier: None,
+            clamping_modifier: None,
+            keeping_result_modifier: Some(KeepHighest {number_of_dice: 3})
+        });
+
+        assert_eq!(result.min_value, bf.min_value, "min_value mismatch");
+        assert_eq!(result.probabilities.len(), bf.probabilities.len(), "length mismatch");
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - bf.probabilities[i]).abs() < 1e-6,
+                "value {}: bf {}, result {}", result.min_value + i as u32, bf.probabilities[i], result.probabilities[i]);
+        }
+    }
+
+    #[test]
+    fn it_correctly_computes_keep_highest_3_of_5_dice_with_rerolls() {
+        // 5d6r2<3kh3, brute force
+        let mut bf = Distribution {
+            probabilities: vec![0.0; 16],
+            min_value: 3u32
+        };
+
+        for a in 1u32..=6 {
+            for b in 1u32..=6 {
+                for c in 1u32..=6 {
+                    for d in 1u32..=6 {
+                        for e in 1u32..=6 {
+                            let mut sorted = vec![a, b, c, d, e];
+                            sorted.sort();
+                            let bad_count = sorted.iter().filter(|&&x| x < 3).count();
+                            let reroll_count = 2.min(bad_count);
+                            let kept_count = bad_count - reroll_count;
+
+                            let good_vals: Vec<u32> = sorted.iter().skip(bad_count).copied().collect();
+                            let bad_vals: Vec<u32> = sorted.iter().take(bad_count).copied().collect();
+
+                            if bad_count == 0 {
+                                let mut all = good_vals;
+                                all.sort_unstable_by(|x, y| y.cmp(x));
+                                let sum = all[0] + all[1] + all[2];
+                                bf.probabilities[(sum - bf.min_value) as usize] += 1.0;
+                            } else if bad_count == 1 {
+                                for r1 in 1u32..=6 {
+                                    let mut final_vals = vec![r1];
+                                    final_vals.extend(&good_vals);
+                                    final_vals.sort_unstable_by(|x, y| y.cmp(x));
+                                    let sum = final_vals[0] + final_vals[1] + final_vals[2];
+                                    bf.probabilities[(sum - bf.min_value) as usize] += 1.0 / 6.0;
+                                }
+                            } else {
+                                for r1 in 1u32..=6 {
+                                    for r2 in 1u32..=6 {
+                                        let mut final_vals: Vec<u32> = vec![r1, r2];
+                                        let kept_bad: Vec<u32> = bad_vals.iter()
+                                            .rev().take(kept_count).copied().collect();
+                                        final_vals.extend(&kept_bad);
+                                        final_vals.extend(&good_vals);
+                                        final_vals.sort_unstable_by(|x, y| y.cmp(x));
+                                        let sum = final_vals[0] + final_vals[1] + final_vals[2];
+                                        bf.probabilities[(sum - bf.min_value) as usize] += 1.0 / 36.0;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let total: f64 = bf.probabilities.iter().sum();
+        for p in &mut bf.probabilities { *p /= total; }
+
+        let result = get_dice_roll_distribution(& DiceRoll {
+            number_of_dice: 5, dice_size: 6,
+            reroll_modifier: Some(RerollIfLower {dice_to_reroll: 2, number: 3}),
+            clamping_modifier: None,
+            keeping_result_modifier: Some(KeepHighest {number_of_dice: 3})
+        });
+
+        assert_eq!(result.min_value, bf.min_value, "min_value mismatch");
+        assert_eq!(result.probabilities.len(), bf.probabilities.len(), "length mismatch");
         for i in 0..result.probabilities.len() {
             assert!((result.probabilities[i] - bf.probabilities[i]).abs() < 1e-6,
                 "value {}: bf {}, result {}", result.min_value + i as u32, bf.probabilities[i], result.probabilities[i]);
