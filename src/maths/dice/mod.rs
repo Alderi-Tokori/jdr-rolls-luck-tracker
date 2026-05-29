@@ -326,14 +326,11 @@ mod tests {
 
         let sum: f32 = brute_forced_probabilities.probabilities.iter().sum();
 
-        dbg!(& sum, & brute_forced_probabilities);
-
         for i in 0..brute_forced_probabilities.probabilities.len() {
             brute_forced_probabilities.probabilities[i] /= sum;
         }
 
-        dbg!(& brute_forced_probabilities);
-        dbg!(& get_dice_roll_distribution(& DiceRoll {
+        let result = get_dice_roll_distribution(& DiceRoll {
             number_of_dice: 2,
             dice_size: 20,
             reroll_modifier: Some(RerollIfLower {
@@ -342,7 +339,17 @@ mod tests {
             }),
             clamping_modifier: None,
             keeping_result_modifier: None,
-        }));
+        });
+
+        assert_eq!(result.min_value, brute_forced_probabilities.min_value);
+        assert_eq!(result.probabilities.len(), brute_forced_probabilities.probabilities.len());
+        for i in 0..result.probabilities.len() {
+            assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                "value {}: brute_force {}, result {}",
+                result.min_value + i as u32,
+                brute_forced_probabilities.probabilities[i],
+                result.probabilities[i]);
+        }
     }
 
     #[test]
