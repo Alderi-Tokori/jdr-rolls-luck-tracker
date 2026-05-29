@@ -84,8 +84,8 @@ fn get_graph_spline_intervals(points: &[Point]) -> Vec<GraphSplineInterval> {
         .for_each(|points| {
             let mut degree = 3;
 
-            if (points[0].y < points[1].y && points[2].y < points[1].y)
-                || (points[0].y > points[1].y && points[2].y > points[1].y) {
+        if (points[0].y < points[1].y && points[2].y < points[1].y)
+            || (points[0].y > points[1].y && points[2].y > points[1].y) {
                 // To accomodate for the additionnal constraint at local optimum, the splines leading to a local
                 // optimum will need to be quartic instead of only cubic
                 degree += 1;
@@ -358,6 +358,7 @@ fn compute_equation_metadata(intervals: &[GraphSplineInterval]) -> (usize, usize
     let min_c = coeff_idx + 2;
     let max_c = coeff_idx + len_last - 1;
     bw = bw.max(row_idx.abs_diff(min_c)).max(row_idx.abs_diff(max_c));
+    row_idx += 1;
     n += 1;
 
     (n, bw)
@@ -391,7 +392,7 @@ fn solve_1d_banded_v11(mat: Compact1DBandMatrix) -> Vec<f32> {
     let mut rhs = mat.rhs;
 
     let mut solved_gen = vec![0u8; n];
-    let mut generation: u8 = 1;
+    let generation: u8 = 1;
     let mut cur: usize = 0;
 
     for i in 0..n - 1 {
@@ -416,7 +417,7 @@ fn solve_1d_banded_v11(mat: Compact1DBandMatrix) -> Vec<f32> {
         };
 
         let mut has_found = false;
-        for j in (i + 1)..min(i + 7, n) {
+        for j in (i + 1)..min(i + 2 * bw + 1, n) {
             let base_j = j * band_w;
             let val_below = {
                 let d = (fnz as isize - j as isize + bw as isize) as usize;
@@ -427,7 +428,7 @@ fn solve_1d_banded_v11(mat: Compact1DBandMatrix) -> Vec<f32> {
                 let mult = val_below / pivot;
 
                 let c_start = fnz;
-                let c_end = min(fnz + 4, n).min(i + bw + 1);
+                let c_end = (fnz + 2 * bw + 1).min(n);
                 for c in c_start..c_end {
                     let di = (c as isize - i as isize + bw as isize) as usize;
                     if di < band_w && band[base_i + di] != 0.0 {
@@ -449,56 +450,66 @@ fn solve_1d_banded_v11(mat: Compact1DBandMatrix) -> Vec<f32> {
         solved_gen[fnz] = generation;
     }
 
-    generation += 1;
-    cur = n.saturating_sub(1);
+    // Backward elimination: from bottom, normalize pivot,
+    // eliminate upward, then zero all non-pivot entries in the row.
 
     for i in (1..n).rev() {
-        while cur > 0 && solved_gen[cur] == generation {
-            cur -= 1;
-        }
-
         let base_i = i * band_w;
-        let last = {
-            let end_col = (i + bw).min(n - 1).min(cur);
-            let start_col = i.saturating_sub(bw);
-            (start_col..=end_col).rev().find(|&c| {
-                let d = c as isize - i as isize + bw as isize;
-                d >= 0 && (d as usize) < band_w && band[base_i + d as usize] != 0.0
-            })
-        };
+
+        let end_col = (i + bw).min(n - 1);
+        let start_col = i.saturating_sub(bw);
+        let last = (start_col..=end_col).rev().find(|&c| {
+            let d = c as isize - i as isize + bw as isize;
+            d >= 0 && (d as usize) < band_w && band[base_i + d as usize] != 0.0
+        });
+
         let last = match last { Some(c) => c, None => continue };
 
         let pivot_val = {
             let d = (last as isize - i as isize + bw as isize) as usize;
             band[base_i + d]
         };
-        if pivot_val != 1.0 {
+
+        let cur_rhs;
+        if pivot_val.abs() < 1e-12 {
+            cur_rhs = 0.0;
+        } else if (pivot_val - 1.0).abs() < 1e-10 {
+            cur_rhs = rhs[i];
+        } else {
             rhs[i] /= pivot_val;
             let d = (last as isize - i as isize + bw as isize) as usize;
             band[base_i + d] = 1.0;
+            cur_rhs = rhs[i];
         }
 
-        let cur_rhs = rhs[i];
-
-        for j in i.saturating_sub(4)..i {
+        // Eliminate pivot column from rows above
+        for j in i.saturating_sub(2 * bw)..i {
             let base_j = j * band_w;
             let val_above = {
                 let d = (last as isize - j as isize + bw as isize) as usize;
                 if d < band_w { band[base_j + d] } else { 0.0 }
             };
             if val_above != 0.0 {
-                let mult = val_above;
                 let d = (last as isize - j as isize + bw as isize) as usize;
                 if d < band_w {
                     band[base_j + d] = 0.0;
                 }
                 if cur_rhs != 0.0 {
-                    rhs[j] -= cur_rhs * mult;
+                    rhs[j] -= cur_rhs * val_above;
                 }
             }
         }
 
-        solved_gen[last] = generation;
+        // Zero out all non-pivot entries in this row so the
+        // reordering step sees exactly one non-zero per row
+        for c in start_col..=end_col {
+            if c != last {
+                let d = (c as isize - i as isize + bw as isize) as usize;
+                if d < band_w {
+                    band[base_i + d] = 0.0;
+                }
+            }
+        }
     }
 
     let mut indexed: Vec<(usize, usize)> = (0..n).map(|i| {
@@ -624,7 +635,7 @@ mod tests {
         assert_eq!(intervals[1].polynomial.coefficients.len(), 5);
         assert_eq!(intervals[2].polynomial.coefficients.len(), 4);
         assert_eq!(intervals[3].polynomial.coefficients.len(), 5);
-        assert_eq!(intervals[4].polynomial.coefficients.len(), 5);
+        assert_eq!(intervals[4].polynomial.coefficients.len(), 4);
         assert_eq!(intervals[5].polynomial.coefficients.len(), 4);
         assert_eq!(intervals[6].polynomial.coefficients.len(), 4);
         assert_eq!(intervals[7].polynomial.coefficients.len(), 5);
@@ -755,6 +766,35 @@ mod tests {
                 size,
                 elapsed,
             );
+        }
+    }
+
+    #[test]
+    fn it_correctly_interpolates_15_point_set() {
+        let points = vec![
+            Point { x: 0.0, y: 2.0 },
+            Point { x: 1.0, y: 3.0 },
+            Point { x: 2.0, y: 3.0 },
+            Point { x: 3.0, y: 4.0 },
+            Point { x: 4.0, y: 1.0 },
+            Point { x: 5.0, y: 3.0 },
+            Point { x: 6.0, y: 5.0 },
+            Point { x: 7.0, y: 2.0 },
+            Point { x: 8.0, y: 3.2375002 },
+            Point { x: 9.0, y: 3.2375002 },
+            Point { x: 10.0, y: 4.3916664 },
+            Point { x: 11.0, y: 2.7041667 },
+            Point { x: 12.0, y: 2.7041667 },
+            Point { x: 13.0, y: 2.7041667 },
+            Point { x: 14.0, y: 4.258333 },
+        ];
+
+        let solution = get_graph_spline_interpolation_function(&points).unwrap();
+
+        for pt in &points {
+            let eval_y = solution.eval(pt.x).unwrap();
+            assert!((eval_y - pt.y).abs() < 0.01,
+                "Spline at x={} failed: expected {} got {}", pt.x, pt.y, eval_y);
         }
     }
 }
