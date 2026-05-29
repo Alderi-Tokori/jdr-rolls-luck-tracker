@@ -280,6 +280,7 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
 #[cfg(test)]
 mod tests {
     use std::cmp::max;
+    use crate::maths::dice::KeepingResultModifier::KeepHighest;
     use crate::maths::dice::RerollModifier::RerollIfLower;
     use super::*;
 
@@ -477,5 +478,64 @@ mod tests {
                     brute_forced_probabilities.probabilities[i],
                     result.probabilities[i]);
         }
+    }
+
+    #[test]
+    fn it_correctly_computes_sum_of_highest_k_with_reroll_distributions() {
+        let d = Distribution {
+            probabilities: vec![1.0 / 20.0; 20],
+            min_value: 1
+        };
+
+        // brute force of keep highest 2 out of three from distribution d with 2 dice to reroll if < 6
+        let mut brute_forced_probabilities = Distribution {
+            probabilities: vec![0.0; d.probabilities.len() * 2 - 1],
+            min_value: 2
+        };
+
+        for i in 1..=20 {
+            for j in 1..=20 {
+                for k in 1..=20 {
+                    let mut sorted_values = vec![i, j, k];
+                    sorted_values.sort();
+
+                    if sorted_values[0] < 6 {
+                        for i in 1..=20 {
+                            if sorted_values[1] < 6 {
+                                for j in 1..=20 {
+                                    let mut sorted_values = vec![i, j, sorted_values[2]];
+                                    sorted_values.sort();
+
+                                    brute_forced_probabilities.probabilities[(sorted_values[1] + sorted_values[2] - brute_forced_probabilities.min_value) as usize] += 1.0 / 400.0;
+                                }
+                            } else {
+                                let mut sorted_values = vec![i, sorted_values[1], sorted_values[2]];
+                                sorted_values.sort();
+
+                                brute_forced_probabilities.probabilities[(sorted_values[1] + sorted_values[2] - brute_forced_probabilities.min_value) as usize] += 1.0 / 20.0;
+                            }
+                        }
+                    } else {
+                        brute_forced_probabilities.probabilities[(sorted_values[1] + sorted_values[2] - brute_forced_probabilities.min_value) as usize] += 1.0;
+                    }
+                }
+            }
+        }
+
+        let sum: f64 = brute_forced_probabilities.probabilities.iter().sum();
+
+        for i in 0..brute_forced_probabilities.probabilities.len() {
+            brute_forced_probabilities.probabilities[i] /= sum;
+        }
+
+        let result = get_dice_roll_distribution(& DiceRoll {
+            number_of_dice: 3,
+            dice_size: 20,
+            reroll_modifier: Some(RerollIfLower {dice_to_reroll: 2, number: 6}),
+            clamping_modifier: None,
+            keeping_result_modifier: Some(KeepHighest {number_of_dice: 2})
+        });
+
+        dbg!(& brute_forced_probabilities, & result);
     }
 }
