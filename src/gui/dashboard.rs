@@ -38,7 +38,6 @@ impl Dashboard {
                     y: point.y
                 });
 
-                dbg!(& self.graph_points);
                 Action::None
             }
         }
