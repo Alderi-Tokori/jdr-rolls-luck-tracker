@@ -857,7 +857,6 @@ fn it_correctly_computes_reroll_equal_keep_lowest_3() {
 
 #[test]
 fn it_correctly_computes_sum_of_highest_2_with_reroll_distributions_and_min_10() {
-    // 3d20r2<6kh2min10
     let d = Distribution {
         probabilities: vec![1.0 / 20.0; 20],
         min_value: 1
@@ -925,7 +924,6 @@ fn it_correctly_computes_sum_of_highest_2_with_reroll_distributions_and_min_10()
 
 #[test]
 fn it_correctly_computes_sum_of_highest_2_with_reroll_distributions_and_max_15() {
-    // 3d20r2<6kh2max15
     let d = Distribution {
         probabilities: vec![1.0 / 20.0; 20],
         min_value: 1
@@ -993,7 +991,6 @@ fn it_correctly_computes_sum_of_highest_2_with_reroll_distributions_and_max_15()
 
 #[test]
 fn it_correctly_computes_sum_of_highest_2_and_min_10() {
-    // 3d20r2<6kh2min10
     let d = Distribution {
         probabilities: vec![1.0 / 20.0; 20],
         min_value: 1
@@ -1043,7 +1040,6 @@ fn it_correctly_computes_sum_of_highest_2_and_min_10() {
 
 #[test]
 fn it_correctly_computes_sum_of_highest_2_and_max_15() {
-    // 3d20r2<6kh2min10
     let d = Distribution {
         probabilities: vec![1.0 / 20.0; 20],
         min_value: 1
@@ -1093,7 +1089,6 @@ fn it_correctly_computes_sum_of_highest_2_and_max_15() {
 
 #[test]
 fn it_correctly_computes_sum_of_lowest_2_and_min_10() {
-    // 3d20r2<6kh2min10
     let d = Distribution {
         probabilities: vec![1.0 / 20.0; 20],
         min_value: 1
@@ -1143,7 +1138,6 @@ fn it_correctly_computes_sum_of_lowest_2_and_min_10() {
 
 #[test]
 fn it_correctly_computes_sum_of_lowest_2_and_max_15() {
-    // 3d20r2<6kh2min10
     let d = Distribution {
         probabilities: vec![1.0 / 20.0; 20],
         min_value: 1
