@@ -1,8 +1,11 @@
+use regex::Regex;
+
 mod tests;
 
 // Since we're handling dice rolls, all integer results will be present after the minimum,
 // so probabilities[i] will be the probability to get min_value + i as a final result.
 use std::collections::HashMap;
+use crate::maths::dice::RerollModifier::{RerollIfEqual, RerollIfGreater, RerollIfLower};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Distribution {
@@ -10,28 +13,83 @@ pub struct Distribution {
     min_value: u32,
 }
 
+#[derive(Debug)]
 pub enum RerollModifier {
     RerollIfLower { dice_to_reroll: u32, number: u32 },
     RerollIfGreater { dice_to_reroll: u32, number: u32 },
     RerollIfEqual { dice_to_reroll: u32, numbers: Vec<u32> },
 }
 
+#[derive(Debug)]
 pub enum ClampingModifier {
     Minimum { number: u32 },
     Maximum { number: u32 },
 }
 
+#[derive(Debug)]
 pub enum KeepingResultModifier {
     KeepHighest { number_of_dice: u32 },
     KeepLowest { number_of_dice: u32 },
 }
 
+#[derive(Debug)]
 pub struct DiceRoll {
     number_of_dice: u32,
     dice_size: u32,
     reroll_modifier: Option<RerollModifier>,
     clamping_modifier: Option<ClampingModifier>,
     keeping_result_modifier: Option<KeepingResultModifier>,
+}
+
+impl DiceRoll {
+    pub fn parse(s: &str) -> Option<DiceRoll> {
+        let mut res = DiceRoll {
+            number_of_dice: 0,
+            dice_size: 1,
+            reroll_modifier: None,
+            clamping_modifier: None,
+            keeping_result_modifier: None
+        };
+
+        // Basic dice match
+        let re = Regex::new(r"^\s*(?<number_of_dice>\d+)d(?<dice_size>\d+)").unwrap();
+        if let Some(captures) = re.captures(s) {
+            res.number_of_dice = captures["number_of_dice"].parse::<u32>().unwrap();
+            res.dice_size = captures["dice_size"].parse::<u32>().unwrap();
+        } else {
+            return None;
+        };
+
+        // Reroll modifiers
+        let re = Regex::new(r"r(?<dice_to_reroll>\d+)(?<operation>[><=])(?:(?<number>\d+)|\{(?<numbers>(?:\d+,?)+)})").unwrap();
+        if let Some(captures) = re.captures(s) {
+            let numbers = match captures.get(3) {
+                Some(m) => vec![m.as_str().parse::<u32>().unwrap()],
+                None => captures.get(4).unwrap().as_str().split(',').collect::<Vec<_>>()
+                    .iter()
+                    .map(|e| (**e).parse::<u32>().unwrap())
+                    .collect(),
+            };
+
+            res.reroll_modifier = match & captures["operation"] {
+                "<" => Some(RerollIfLower {
+                    dice_to_reroll: captures["dice_to_reroll"].parse::<u32>().unwrap(),
+                    number: *numbers.iter().max().unwrap()
+                }),
+                ">" => Some(RerollIfGreater {
+                    dice_to_reroll: captures["dice_to_reroll"].parse::<u32>().unwrap(),
+                    number: *numbers.iter().min().unwrap()
+                }),
+                "=" => Some(RerollIfEqual {
+                    dice_to_reroll: captures["dice_to_reroll"].parse::<u32>().unwrap(),
+                    numbers
+                }),
+                _ => None
+            };
+        }
+
+        Some(dbg!(res))
+    }
 }
 
 impl Distribution {
