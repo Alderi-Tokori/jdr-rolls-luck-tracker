@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use anyhow::anyhow;
 use clap::Parser;
-use crate::maths::dice::DiceRoll;
 
 mod db;
 mod gui;
@@ -23,7 +23,13 @@ async fn main() -> anyhow::Result<()> {
     let database = db::DBHandle::init().await?;
 
     if let Some(roll) = args.roll {
-        let dice_roll = DiceRoll::parse(& roll);
+        let Some(dice_roll) = maths::dice::DiceRoll::parse(& roll) else {
+            return Err(anyhow!("Invalid roll query"));
+        };
+
+        let distribution = maths::dice::get_dice_roll_distribution(& dice_roll);
+
+        println!("{}", serde_json::to_string(& distribution).unwrap_or("".to_string()));
 
         return Ok(());
     }

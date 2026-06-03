@@ -5,9 +5,10 @@ mod tests;
 // Since we're handling dice rolls, all integer results will be present after the minimum,
 // so probabilities[i] will be the probability to get min_value + i as a final result.
 use std::collections::HashMap;
+use serde::Serialize;
 use crate::maths::dice::RerollModifier::{RerollIfEqual, RerollIfGreater, RerollIfLower};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct Distribution {
     probabilities: Vec<f64>,
     min_value: u32,
@@ -116,7 +117,7 @@ impl DiceRoll {
             };
         }
 
-        Some(dbg!(res))
+        Some(res)
     }
 }
 
