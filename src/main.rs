@@ -15,6 +15,17 @@ struct Args {
     /// Calculate the probability distribution of a given roll
     #[arg(short, long)]
     roll: Option<String>,
+
+    /// Declare the format you want for distribution output
+    #[arg(
+        short,
+        long,
+        value_parser = clap::builder::PossibleValuesParser::new(
+            ["json", "csv"]
+        ),
+        default_value = "json"
+    )]
+    format: String,
 }
 
 #[tokio::main]
@@ -29,7 +40,11 @@ async fn main() -> anyhow::Result<()> {
 
         let distribution = maths::dice::get_dice_roll_distribution(& dice_roll);
 
-        println!("{}", serde_json::to_string(& distribution).unwrap_or("".to_string()));
+        match args.format.as_str() {
+            "json" => println!("{}", distribution.format_json()),
+            "csv" => println!("{}", distribution.format_csv().unwrap_or("".to_string())),
+            _ => println!("Format {} not yet implemented!", args.format),
+        }
 
         return Ok(());
     }

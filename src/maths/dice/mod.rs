@@ -263,6 +263,24 @@ impl Distribution {
 
         state_below_face[number_of_dice_usize][number_of_kept_dice_usize].clone()
     }
+
+    pub fn format_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or("".to_string())
+    }
+
+    pub fn format_csv(&self) -> anyhow::Result<String> {
+        let mut wtr = csv::Writer::from_writer(vec![]);
+
+        wtr.write_record(["Value", "Probability"])?;
+
+        for (idx, p) in self.probabilities.iter().enumerate() {
+            wtr.write_record(&[(idx + self.min_value as usize).to_string(), p.to_string()])?
+        }
+
+        wtr.flush()?;
+
+        Ok(String::from_utf8(wtr.into_inner()?)?)
+    }
 }
 
 pub fn get_combinations(n: u32, k: u32) -> u64 {
