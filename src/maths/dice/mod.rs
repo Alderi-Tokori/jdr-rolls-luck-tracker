@@ -88,6 +88,34 @@ impl DiceRoll {
             };
         }
 
+        // Keeping results modifiers
+        let re = Regex::new(r"k(?<keep_type>[hl])(?<number_of_dice>\d+)").unwrap();
+        if let Some(captures) = re.captures(s) {
+            res.keeping_result_modifier = match & captures["keep_type"] {
+                "h" => Some(KeepingResultModifier::KeepHighest {
+                    number_of_dice: captures["number_of_dice"].parse::<u32>().unwrap()
+                }),
+                "l" => Some(KeepingResultModifier::KeepLowest {
+                    number_of_dice: captures["number_of_dice"].parse::<u32>().unwrap()
+                }),
+                _ => None
+            };
+        }
+
+        // Clamping modifiers
+        let re = Regex::new(r"(?<clamp_type>min|max)(?<number>\d+)").unwrap();
+        if let Some(captures) = re.captures(s) {
+            res.clamping_modifier = match & captures["clamp_type"] {
+                "min" => Some(ClampingModifier::Minimum {
+                    number: captures["number"].parse::<u32>().unwrap()
+                }),
+                "max" => Some(ClampingModifier::Maximum {
+                    number: captures["number"].parse::<u32>().unwrap()
+                }),
+                _ => None
+            };
+        }
+
         Some(dbg!(res))
     }
 }
