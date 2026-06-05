@@ -922,43 +922,51 @@ pub fn get_dice_roll_distribution_rational(roll: & DiceRoll) -> DistributionRati
                 });
             }
             None => {
-                let dice_size = roll.dice_size as usize;
-                let num_dice = roll.number_of_dice as usize;
+                if roll.clamping_modifier.is_none() {
+                    let dice_size = roll.dice_size as usize;
+                    let num_dice = roll.number_of_dice as usize;
 
-                // Integer convolution with sliding window.
-                // Working in count-space (number of ways, not probability) avoids all
-                // Rational GCD reduction. The sliding window exploits the fact that every
-                // face of a fair die has count=1, reducing the inner loop from
-                // O(dice_size) per output element to O(1).
-                let mut counts: Vec<Integer> = vec![Integer::from(1)];
-                for _ in 0..num_dice {
-                    let cur_len = counts.len();
-                    let new_len = cur_len + dice_size - 1;
-                    let mut new_counts = Vec::with_capacity(new_len);
-                    let mut window_sum = Integer::new();
+                    // Integer convolution with sliding window.
+                    // Working in count-space (number of ways, not probability) avoids all
+                    // Rational GCD reduction. The sliding window exploits the fact that every
+                    // face of a fair die has count=1, reducing the inner loop from
+                    // O(dice_size) per output element to O(1).
+                    let mut counts: Vec<Integer> = vec![Integer::from(1)];
+                    for _ in 0..num_dice {
+                        let cur_len = counts.len();
+                        let new_len = cur_len + dice_size - 1;
+                        let mut new_counts = Vec::with_capacity(new_len);
+                        let mut window_sum = Integer::new();
 
-                    for k in 0..new_len {
-                        if k < cur_len {
-                            window_sum += &counts[k];
+                        for k in 0..new_len {
+                            if k < cur_len {
+                                window_sum += &counts[k];
+                            }
+                            if k >= dice_size {
+                                window_sum -= &counts[k - dice_size];
+                            }
+                            new_counts.push(Integer::from(&window_sum));
                         }
-                        if k >= dice_size {
-                            window_sum -= &counts[k - dice_size];
-                        }
-                        new_counts.push(Integer::from(&window_sum));
+                        counts = new_counts;
                     }
-                    counts = new_counts;
+
+                    let denom = Integer::from(dice_size as u32).pow(num_dice as u32);
+                    let probabilities: Vec<Rational> = counts
+                        .into_iter()
+                        .map(|c| Rational::from((c, denom.clone())))
+                        .collect();
+
+                    res = Some(DistributionRational {
+                        probabilities,
+                        min_value: num_dice as u32,
+                    });
+                } else {
+                    let mut dist = DistributionRational { probabilities: vec![Rational::from((1, 1))], min_value: 0 };
+                    for _ in 0..roll.number_of_dice {
+                        dist.add(&effective_base);
+                    }
+                    res = Some(dist);
                 }
-
-                let denom = Integer::from(dice_size as u32).pow(num_dice as u32);
-                let probabilities: Vec<Rational> = counts
-                    .into_iter()
-                    .map(|c| Rational::from((c, denom.clone())))
-                    .collect();
-
-                res = Some(DistributionRational {
-                    probabilities,
-                    min_value: num_dice as u32,
-                });
             }
         }
     }
