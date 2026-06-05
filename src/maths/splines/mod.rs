@@ -638,7 +638,7 @@ mod tests {
         assert_eq!(intervals[4].polynomial.coefficients.len(), 4);
         assert_eq!(intervals[5].polynomial.coefficients.len(), 4);
         assert_eq!(intervals[6].polynomial.coefficients.len(), 4);
-        assert_eq!(intervals[7].polynomial.coefficients.len(), 5);
+        assert_eq!(intervals[7].polynomial.coefficients.len(), 4);
         assert_eq!(intervals[8].polynomial.coefficients.len(), 4);
         assert_eq!(intervals[9].polynomial.coefficients.len(), 4);
     }
