@@ -1402,3 +1402,102 @@ fn benchmark() {
         elapsed,
     );
 }
+
+#[test]
+fn it_correctly_sums_all_final_probabilities_to_1() {
+    let dice_roll = DiceRoll {
+        number_of_dice: 2,
+        dice_size: 20,
+        reroll_modifier: None,
+        clamping_modifier: None,
+        keeping_result_modifier: Some(
+            KeepHighest {
+                number_of_dice: 1
+            }
+        )
+    };
+
+    let result = get_dice_roll_distribution(&dice_roll);
+    let result_rational = get_dice_roll_distribution_rational(&dice_roll);
+
+    assert_eq!(result.min_value, 1);
+    assert_eq!(result.probabilities.len(), 20);
+    assert_eq!(result_rational.min_value, 1);
+    assert_eq!(result_rational.probabilities.len(), 20);
+
+    let sum_result: f64 = result.probabilities.iter().sum();
+    assert!((sum_result - 1.0).abs() < 1e-6,
+            "Sum: {}",
+            sum_result);
+
+    let sum_result_rational: Rational = result_rational.probabilities.iter().sum();
+    assert!((sum_result_rational.to_f64() - 1.0).abs() < 1e-6,
+            "Sum: {}",
+            sum_result_rational);
+}
+
+#[test]
+fn it_correctly_sums_all_final_probabilities_to_1_with_kh2() {
+    let dice_roll = DiceRoll {
+        number_of_dice: 4,
+        dice_size: 6,
+        reroll_modifier: None,
+        clamping_modifier: None,
+        keeping_result_modifier: Some(
+            KeepHighest {
+                number_of_dice: 2
+            }
+        )
+    };
+
+    let result = get_dice_roll_distribution(&dice_roll);
+    let result_rational = get_dice_roll_distribution_rational(&dice_roll);
+
+    assert_eq!(result.min_value, 2);
+    assert_eq!(result.probabilities.len(), 11);
+    assert_eq!(result_rational.min_value, 2);
+    assert_eq!(result_rational.probabilities.len(), 11);
+
+    let sum_result: f64 = result.probabilities.iter().sum();
+    assert!((sum_result - 1.0).abs() < 1e-6,
+            "Sum: {}",
+            sum_result);
+
+    let sum_result_rational: Rational = result_rational.probabilities.iter().sum();
+    assert!((sum_result_rational.to_f64() - 1.0).abs() < 1e-6,
+            "Sum: {}",
+            sum_result_rational);
+}
+
+#[test]
+fn it_correctly_sums_all_final_probabilities_to_1_with_bigger_rolls() {
+    let dice_roll = DiceRoll {
+        number_of_dice: 100,
+        dice_size: 6,
+        reroll_modifier: None,
+        clamping_modifier: None,
+        keeping_result_modifier: Some(
+            KeepHighest {
+                number_of_dice: 2
+            }
+        )
+    };
+
+    let result = get_dice_roll_distribution(&dice_roll);
+    let result_rational = get_dice_roll_distribution_rational(&dice_roll);
+
+    assert_eq!(result.min_value, 2);
+    assert_eq!(result.probabilities.len(), 11);
+    assert_eq!(result_rational.min_value, 2);
+    assert_eq!(result_rational.probabilities.len(), 11);
+
+    let sum_result: f64 = result.probabilities.iter().sum();
+    assert!((sum_result - 1.0).abs() < 1e-6,
+            "Sum: {}",
+            sum_result);
+
+    let sum_result_rational: Rational = result_rational.probabilities.iter().sum();
+    assert!((sum_result_rational.to_f64() - 1.0).abs() < 1e-6,
+            "Sum: {}",
+            sum_result_rational);
+}
