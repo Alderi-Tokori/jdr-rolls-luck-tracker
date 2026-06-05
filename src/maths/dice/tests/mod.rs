@@ -151,15 +151,58 @@ fn it_correctly_computes_sum_of_highest_k() {
         probabilities: vec![1.0 / 20.0; 20],
         min_value: 1
     };
+    let dr = DistributionRational {
+        probabilities: vec![Rational::from((1, 20)); 20],
+        min_value: 1
+    };
 
     let result = d.get_sum_highest_k_distribution(2, 1);
+    let result_rational = dr.get_sum_highest_k_distribution(2, 1);
+
     assert_eq!(result.min_value, 1);
     assert_eq!(result.probabilities.len(), 20);
+    assert_eq!(result_rational.min_value, 1);
+    assert_eq!(result_rational.probabilities.len(), 20);
     // P(max=i) = (i^2 - (i-1)^2) / 400 = (2i-1)/400
     for i in 0u32..20 {
         let expected = (2.0 * (i + 1) as f64 - 1.0) / 400.0;
+
         assert!((result.probabilities[i as usize] - expected).abs() < 1e-6,
                 "i={i}: expected {expected}, got {}", result.probabilities[i as usize]);
+        assert!((result_rational.probabilities[i as usize].to_f64() - expected).abs() < 1e-6,
+                "i={i}: expected {expected}, got rational {} (= {})", result_rational.probabilities[i as usize], result_rational.probabilities[i as usize].to_f64());
+    }
+}
+
+#[test]
+fn it_correctly_computes_sum_of_highest_k_through_get_dice() {
+    let dice_roll = DiceRoll {
+        number_of_dice: 2,
+        dice_size: 20,
+        reroll_modifier: None,
+        clamping_modifier: None,
+        keeping_result_modifier: Some(
+            KeepHighest {
+                number_of_dice: 1
+            }
+        )
+    };
+
+    let result = get_dice_roll_distribution(&dice_roll);
+    let result_rational = get_dice_roll_distribution_rational(&dice_roll);
+
+    assert_eq!(result.min_value, 1);
+    assert_eq!(result.probabilities.len(), 20);
+    assert_eq!(result_rational.min_value, 1);
+    assert_eq!(result_rational.probabilities.len(), 20);
+    // P(max=i) = (i^2 - (i-1)^2) / 400 = (2i-1)/400
+    for i in 0u32..20 {
+        let expected = (2.0 * (i + 1) as f64 - 1.0) / 400.0;
+
+        assert!((result.probabilities[i as usize] - expected).abs() < 1e-6,
+                "i={i}: expected {expected}, got {}", result.probabilities[i as usize]);
+        assert!((result_rational.probabilities[i as usize].to_f64() - expected).abs() < 1e-6,
+                "i={i}: expected {expected}, got rational {} (= {})", result_rational.probabilities[i as usize], result_rational.probabilities[i as usize].to_f64());
     }
 }
 
@@ -167,6 +210,30 @@ fn it_correctly_computes_sum_of_highest_k() {
 fn it_correctly_computes_sum_of_highest_k_with_weirder_distributions() {
     let d = Distribution {
         probabilities: vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1],
+        min_value: 1
+    };
+    let dr = DistributionRational {
+        probabilities: vec![
+            Rational::from((1, 10)),
+            Rational::from((1, 10)),
+            Rational::from((1, 10)),
+            Rational::from((1, 10)),
+            Rational::from((1, 10)),
+            Rational::from((1, 10)),
+            Rational::from((1, 10)),
+            Rational::from((1, 10)),
+            Rational::from((0, 1)),
+            Rational::from((1, 10)),
+            Rational::from((0, 1)),
+            Rational::from((0, 1)),
+            Rational::from((0, 1)),
+            Rational::from((0, 1)),
+            Rational::from((0, 1)),
+            Rational::from((0, 1)),
+            Rational::from((0, 1)),
+            Rational::from((0, 1)),
+            Rational::from((0, 1)),
+            Rational::from((1, 10))],
         min_value: 1
     };
 
@@ -196,9 +263,12 @@ fn it_correctly_computes_sum_of_highest_k_with_weirder_distributions() {
     }
 
     let result = d.get_sum_highest_k_distribution(3, 2);
+    let result_rational = dr.get_sum_highest_k_distribution(3, 2);
 
     assert_eq!(result.min_value, 2);
     assert_eq!(result.probabilities.len(), 39);
+    assert_eq!(result_rational.min_value, 2);
+    assert_eq!(result_rational.probabilities.len(), 39);
 
     for i in 0..result.probabilities.len() {
         assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
@@ -206,6 +276,13 @@ fn it_correctly_computes_sum_of_highest_k_with_weirder_distributions() {
                 result.min_value + i as u32,
                 brute_forced_probabilities.probabilities[i],
                 result.probabilities[i]);
+        assert!((result_rational.probabilities[i].to_f64() - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                "value {}: brute_force {}, result_rational {} (= {})",
+                result_rational.min_value + i as u32,
+                brute_forced_probabilities.probabilities[i],
+                result_rational.probabilities[i],
+                result_rational.probabilities[i].to_f64()
+        );
     }
 }
 
@@ -213,6 +290,29 @@ fn it_correctly_computes_sum_of_highest_k_with_weirder_distributions() {
 fn it_correctly_computes_sum_of_highest_k_with_weirder_non_uniform_distributions() {
     let d = Distribution {
         probabilities: vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2],
+        min_value: 1
+    };
+    let dr = DistributionRational {
+        probabilities: vec![Rational::from((1, 10)),
+                            Rational::from((1, 10)),
+                            Rational::from((1, 10)),
+                            Rational::from((1, 10)),
+                            Rational::from((1, 10)),
+                            Rational::from((1, 10)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((1, 5)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((0, 1)),
+                            Rational::from((1, 5))],
         min_value: 1
     };
 
@@ -242,9 +342,12 @@ fn it_correctly_computes_sum_of_highest_k_with_weirder_non_uniform_distributions
     }
 
     let result = d.get_sum_highest_k_distribution(3, 2);
+    let result_rational = dr.get_sum_highest_k_distribution(3, 2);
 
     assert_eq!(result.min_value, 2);
     assert_eq!(result.probabilities.len(), 39);
+    assert_eq!(result_rational.min_value, 2);
+    assert_eq!(result_rational.probabilities.len(), 39);
 
     for i in 0..result.probabilities.len() {
         assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
@@ -252,6 +355,13 @@ fn it_correctly_computes_sum_of_highest_k_with_weirder_non_uniform_distributions
                 result.min_value + i as u32,
                 brute_forced_probabilities.probabilities[i],
                 result.probabilities[i]);
+        assert!((result_rational.probabilities[i].to_f64() - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                "value {}: brute_force {}, result_rational {} (= {})",
+                result_rational.min_value + i as u32,
+                brute_forced_probabilities.probabilities[i],
+                result_rational.probabilities[i],
+                result_rational.probabilities[i].to_f64()
+        );
     }
 }
 
