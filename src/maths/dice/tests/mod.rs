@@ -47,6 +47,41 @@ fn it_correctly_adds_distributions() {
         min_value: 3,
     });
 }
+#[test]
+fn it_correctly_adds_distributions_rationals() {
+    let mut d1 = DistributionRational {
+        probabilities: vec![Rational::from((1, 6)); 6],
+        min_value: 1
+    };
+
+    let mut d2 = DistributionRational {
+        probabilities: vec![Rational::from((1, 6)); 6],
+        min_value: 1
+    };
+
+    d1.add(& d2);
+    d1.add(& d2);
+
+    let mut brute_forced_probabilities = Distribution {
+        probabilities: vec![0.0; 16],
+        min_value: 3
+    };
+    for i in 1..=6 {
+        for j in 1..=6 {
+            for k in 1..=6 {
+                brute_forced_probabilities.probabilities[i + j + k - brute_forced_probabilities.min_value as usize] += 1.0 / 216.0
+            }
+        }
+    }
+
+    for i in 0..d1.probabilities.len() {
+        assert!((d1.probabilities[i].to_f64() - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+            "value {}: brute_force {}, result {}",
+            d1.min_value + i as u32,
+            brute_forced_probabilities.probabilities[i],
+            d1.probabilities[i]);
+    }
+}
 
 #[test]
 fn it_correctly_computes_reroll_modifiers() {
@@ -74,7 +109,7 @@ fn it_correctly_computes_reroll_modifiers() {
         brute_forced_probabilities.probabilities[i] /= sum;
     }
 
-    let result = get_dice_roll_distribution(& DiceRoll {
+    let dice_roll = DiceRoll {
         number_of_dice: 2,
         dice_size: 20,
         reroll_modifier: Some(RerollIfLower {
@@ -83,16 +118,29 @@ fn it_correctly_computes_reroll_modifiers() {
         }),
         clamping_modifier: None,
         keeping_result_modifier: None,
-    });
+    };
+
+    let result = get_dice_roll_distribution(& dice_roll);
+    let result_rational = get_dice_roll_distribution_rational(& dice_roll);
 
     assert_eq!(result.min_value, brute_forced_probabilities.min_value);
     assert_eq!(result.probabilities.len(), brute_forced_probabilities.probabilities.len());
+    assert_eq!(result_rational.min_value, brute_forced_probabilities.min_value);
+    assert_eq!(result_rational.probabilities.len(), brute_forced_probabilities.probabilities.len());
     for i in 0..result.probabilities.len() {
         assert!((result.probabilities[i] - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
                 "value {}: brute_force {}, result {}",
                 result.min_value + i as u32,
                 brute_forced_probabilities.probabilities[i],
-                result.probabilities[i]);
+                result.probabilities[i])
+        ;
+
+        assert!((result_rational.probabilities[i].to_f64() - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                "value {}: brute_force {}, result {}",
+                result_rational.min_value + i as u32,
+                brute_forced_probabilities.probabilities[i],
+                result_rational.probabilities[i])
+        ;
     }
 }
 

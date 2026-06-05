@@ -776,7 +776,7 @@ pub fn get_dice_roll_distribution_rational(roll: & DiceRoll) -> DistributionRati
         };
 
         let probability_of_bad_dice = Rational::from((bad_rolls.len(), roll.dice_size));
-        let probability_of_good_dice = Rational::from((1, 0)) - &probability_of_bad_dice;
+        let probability_of_good_dice = Rational::from((1, 1)) - &probability_of_bad_dice;
 
         let mut good_dice_distribution = DistributionRational {
             probabilities: Vec::with_capacity(roll.dice_size as usize),
