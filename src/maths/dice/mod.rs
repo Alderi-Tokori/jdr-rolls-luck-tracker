@@ -250,7 +250,7 @@ impl Distribution {
                     let mut cell_distribution: Option<Distribution> = None;
                     for cur_number_of_dice_landing_on_face in 0..=cur_number_of_dice {
                         let kept = cur_number_of_dice_landing_on_face.min(cur_number_of_kept_dice);
-                        let prob_dice_landing_on_face = get_combinations(cur_number_of_dice as u32, cur_number_of_dice_landing_on_face as u32) as f64
+                        let prob_dice_landing_on_face = get_combinations(cur_number_of_dice as u32, cur_number_of_dice_landing_on_face as u32)
                             * (cur_face_prob / prob_total).powi(cur_number_of_dice_landing_on_face as i32)
                             * (prob_lower / prob_total).powi((cur_number_of_dice - cur_number_of_dice_landing_on_face) as i32);
                         let mut branch_distribution = state_below_face[cur_number_of_dice - cur_number_of_dice_landing_on_face][cur_number_of_kept_dice - kept].clone();
@@ -404,7 +404,7 @@ impl DistributionRational {
                     let mut cell_distribution: Option<DistributionRational> = None;
                     for cur_number_of_dice_landing_on_face in 0..=cur_number_of_dice {
                         let kept = cur_number_of_dice_landing_on_face.min(cur_number_of_kept_dice);
-                        let prob_dice_landing_on_face = get_combinations(cur_number_of_dice as u32, cur_number_of_dice_landing_on_face as u32)
+                        let prob_dice_landing_on_face = get_combinations_rational(cur_number_of_dice as u32, cur_number_of_dice_landing_on_face as u32)
                             * (cur_face_prob / &prob_total).complete().pow(cur_number_of_dice_landing_on_face as i32)
                             * (&prob_lower / &prob_total).complete().pow((cur_number_of_dice - cur_number_of_dice_landing_on_face) as i32);
                         let mut branch_distribution = state_below_face[cur_number_of_dice - cur_number_of_dice_landing_on_face][cur_number_of_kept_dice - kept].clone();
@@ -444,14 +444,24 @@ impl DistributionRational {
     }
 }
 
-pub fn get_combinations(n: u32, k: u32) -> u64 {
+pub fn get_combinations(n: u32, k: u32) -> f64 {
     let k = k.min(n - k);
     let mut result = 1.0;
     for i in 1..=k {
         result *= (n - k + i) as f64;
         result /= i as f64;
     }
-    result as u64
+    result
+}
+
+pub fn get_combinations_rational(n: u32, k: u32) -> Rational {
+    let k = k.min(n - k);
+    let mut result = Rational::from((1, 1));
+    for i in 1..=k {
+        result *= (n - k + i);
+        result /= i;
+    }
+    result
 }
 
 pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
@@ -530,7 +540,7 @@ pub fn get_dice_roll_distribution(roll: & DiceRoll) -> Distribution {
         for number_of_bad_dice in 0..=roll.number_of_dice {
             let number_of_good_dice = roll.number_of_dice - number_of_bad_dice;
 
-            let probability_of_scenario = get_combinations(roll.number_of_dice, number_of_bad_dice) as f64
+            let probability_of_scenario = get_combinations(roll.number_of_dice, number_of_bad_dice)
                 * probability_of_bad_dice.powi(number_of_bad_dice as i32) as f64
                 * probability_of_good_dice.powi(number_of_good_dice as i32) as f64
                 ;
@@ -836,7 +846,7 @@ pub fn get_dice_roll_distribution_rational(roll: & DiceRoll) -> DistributionRati
         for number_of_bad_dice in 0..=roll.number_of_dice {
             let number_of_good_dice = roll.number_of_dice - number_of_bad_dice;
 
-            let probability_of_scenario = get_combinations(roll.number_of_dice, number_of_bad_dice)
+            let probability_of_scenario = get_combinations_rational(roll.number_of_dice, number_of_bad_dice)
                 * (&probability_of_bad_dice).pow(number_of_bad_dice).complete()
                 * (&probability_of_good_dice).pow(number_of_good_dice).complete()
             ;
