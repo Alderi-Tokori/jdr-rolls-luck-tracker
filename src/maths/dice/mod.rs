@@ -341,7 +341,7 @@ impl DistributionRational {
             new_probs[self_offset + i].assign(p.clone());
         }
         for (i, p) in other.probabilities.iter().enumerate() {
-            new_probs[other_offset + i].assign(p.clone());
+            new_probs[other_offset + i] += p.clone();
         }
 
         self.probabilities = new_probs;

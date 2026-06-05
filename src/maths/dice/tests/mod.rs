@@ -136,10 +136,11 @@ fn it_correctly_computes_reroll_modifiers() {
         ;
 
         assert!((result_rational.probabilities[i].to_f64() - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
-                "value {}: brute_force {}, result {}",
+                "value {}: brute_force {}, rational result {} (= {})",
                 result_rational.min_value + i as u32,
                 brute_forced_probabilities.probabilities[i],
-                result_rational.probabilities[i])
+                result_rational.probabilities[i],
+                result_rational.probabilities[i].to_f64())
         ;
     }
 }
