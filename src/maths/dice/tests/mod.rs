@@ -1518,3 +1518,50 @@ fn it_correctly_sums_all_final_probabilities_to_1_with_bigger_rolls_rational() {
             "Sum: {}",
             sum_result_rational);
 }
+
+#[test]
+fn it_correctly_calculates_probabilities_with_min_rational() {
+    let dice_roll = DiceRoll {
+        number_of_dice: 3,
+        dice_size: 6,
+        reroll_modifier: None,
+        clamping_modifier: Some(Minimum {
+            number: 3
+        }),
+        keeping_result_modifier: None,
+    };
+
+    // brute force of keep highest 2 out of three from distribution d with 2 dice to reroll if < 6
+    let mut brute_forced_probabilities = Distribution {
+        probabilities: vec![0.0; 10],
+        min_value: 9
+    };
+
+    for i in 1..=6 {
+        for j in 1..=6 {
+            for k in 1..=6 {
+                brute_forced_probabilities.probabilities[(max(3, i) + max(3, j) + max(3, k) - brute_forced_probabilities.min_value) as usize] += 1.0;
+            }
+        }
+    }
+
+    let sum: f64 = brute_forced_probabilities.probabilities.iter().sum();
+
+    for i in 0..brute_forced_probabilities.probabilities.len() {
+        brute_forced_probabilities.probabilities[i] /= sum;
+    }
+
+    let result_rational = get_dice_roll_distribution_rational(&dice_roll);
+
+    assert_eq!(result_rational.min_value, 9);
+    assert_eq!(result_rational.probabilities.len(), 10);
+    for i in 0..result_rational.probabilities.len() {
+        assert!((result_rational.probabilities[i].to_f64() - brute_forced_probabilities.probabilities[i]).abs() < 1e-6,
+                "value {}: brute_force {}, result_rational {} (= {})",
+                result_rational.min_value + i as u32,
+                brute_forced_probabilities.probabilities[i],
+                result_rational.probabilities[i],
+                result_rational.probabilities[i].to_f64()
+        );
+    }
+}
