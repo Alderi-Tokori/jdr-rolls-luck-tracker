@@ -16,6 +16,10 @@ struct Args {
     #[arg(short, long)]
     roll: Option<String>,
 
+    /// use GMP to do arbitrary precision calculations
+    #[arg(long, default_value_t = false)]
+    gmp: bool,
+
     /// Declare the format you want for distribution output
     #[arg(
         short,
@@ -28,7 +32,7 @@ struct Args {
     format: String,
 
     /// Output the time taken to calculate the distribution
-    #[arg(short, long, default_value_t = false)]
+    #[arg(long, default_value_t = false)]
     benchmark: bool,
 }
 
@@ -42,18 +46,34 @@ async fn main() -> anyhow::Result<()> {
             return Err(anyhow!("Invalid roll query"));
         };
 
-        let start = std::time::Instant::now();
-        let distribution = maths::dice::get_dice_roll_distribution(& dice_roll);
-        let elapsed = start.elapsed();
+        if ! args.gmp {
+            let start = std::time::Instant::now();
+            let distribution = maths::dice::get_dice_roll_distribution(&dice_roll);
+            let elapsed = start.elapsed();
 
-        match args.format.as_str() {
-            "json" => println!("{}", distribution.format_json()),
-            "csv" => println!("{}", distribution.format_csv().unwrap_or("".to_string())),
-            _ => println!("Format {} not yet implemented!", args.format),
-        }
+            match args.format.as_str() {
+                "json" => println!("{}", distribution.format_json()),
+                "csv" => println!("{}", distribution.format_csv().unwrap_or("".to_string())),
+                _ => println!("Format {} not yet implemented!", args.format),
+            }
 
-        if args.benchmark {
-            println!("Distribution calculated in {:.3?}", elapsed);
+            if args.benchmark {
+                println!("Distribution calculated in {:.3?}", elapsed);
+            }
+        } else {
+            let start = std::time::Instant::now();
+            let distribution = maths::dice::get_dice_roll_distribution_rational(&dice_roll);
+            let elapsed = start.elapsed();
+
+            match args.format.as_str() {
+                "json" => println!("{}", distribution.format_json()),
+                "csv" => println!("{}", distribution.format_csv().unwrap_or("".to_string())),
+                _ => println!("Format {} not yet implemented!", args.format),
+            }
+
+            if args.benchmark {
+                println!("Distribution calculated in {:.3?}", elapsed);
+            }
         }
 
         return Ok(());
